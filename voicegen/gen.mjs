@@ -10,6 +10,8 @@ const KEY = (process.env.GEMINI_API_KEY || (fs.existsSync(KEYFILE) ? fs.readFile
 if (!KEY) { console.log('NO_KEY'); process.exit(2); }
 const API = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const MAN = JSON.parse(fs.readFileSync(path.join(ROOT, 'voicegen', 'manifest.json'), 'utf8'));
+// 모델 바꾸기: node gen.mjs voice gemini-3.8-flash-lite-tts  (하루 한도가 다른 모델로 이어서 녹음)
+if (process.argv[3]) MAN.model = process.argv[3];
 const LOG = path.join(ROOT, 'voicegen', 'gen.log');
 const log = (...a) => { const s = new Date().toTimeString().slice(0, 8) + ' ' + a.join(' '); console.log(s); fs.appendFileSync(LOG, s + '\n'); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));

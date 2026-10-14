@@ -168,6 +168,8 @@ const Narr = {
   vkey(p, text) { let h = 0x811c9dc5; const s = p + '|' + String(text).replace(/\s+/g, ' ').trim(); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); },
   clipUrl(id, text) {
     const C = window.VOICE_CLIPS && window.VOICE_CLIPS[id]; if (!C || !C.length || !text) return null;
+    // 녹음이 대부분(90% 이상) 끝난 캐릭터만 녹음 음성을 씀 → 녹음 음성과 컴퓨터 음성이 번갈아 나오지 않게
+    const total = (window.VOICE_TOTAL || {})[id]; if (total && C.length < total * 0.9) return null;
     const set = this.sets[id] || (this.sets[id] = new Set(C)), k = this.vkey(id, text);
     return set.has(k) ? 'assets/voice/' + id + '/' + k + '.mp3' : null;
   },
