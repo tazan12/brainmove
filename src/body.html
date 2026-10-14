@@ -1,0 +1,137 @@
+<div id="stage">
+  <div id="backdrop"><video id="bgVideo" muted loop playsinline preload="auto" hidden></video></div>
+  <div id="veil" class="title"></div>
+  <canvas id="game" hidden></canvas>
+  <video id="video" playsinline muted></video>
+
+  <!-- 시작 -->
+  <section class="screen" id="scr-title">
+    <button class="link admin-link" id="btnAdmin">관리자</button>
+    <div class="hero">
+      <span class="eyebrow">몸으로 생각하는 마을</span>
+      <h1>브레인무브</h1>
+      <span class="sub nacre-text">무지개 마을</span>
+      <p class="lead">밤이 내려앉은 마을의 정원을 몸과 머리로 다시 피워 내요. 혼자서도, 둘이 나란히 서서도 함께할 수 있어요.</p>
+      <div class="menu">
+        <button class="gold big" id="btnStart">시작하기</button>
+        <button id="btnGardenTop">정원과 도감</button>
+      </div>
+      <p class="foot">크롬 브라우저와 웹캠이 필요해요. 카메라 영상은 이 컴퓨터 안에서만 처리되고 저장하거나 보내지 않아요.</p>
+    </div>
+  </section>
+
+  <!-- 인원·모드 -->
+  <section class="screen" id="scr-setup" hidden>
+    <div class="wrap">
+      <div class="row between"><div class="stepper" id="stepper"></div><button class="link" data-go="title">처음으로</button></div>
+      <div class="step" data-step="1">
+        <h2 class="step-title">누가 함께하나요?</h2>
+      <div class="panel">
+        <h3>인원</h3>
+        <div class="opts" id="segPlayers">
+          <button class="opt" data-v="1" aria-pressed="true"><span class="oi">🙋</span>혼자<small>한 사람이 화면 가운데에 서요</small></button>
+          <button class="opt" data-v="2" aria-pressed="false"><span class="oi">👫</span>둘이<small>카메라 하나로 왼쪽·오른쪽에 나란히</small></button>
+        </div>
+        <div id="twoModeBox" hidden style="display:flex;flex-direction:column;gap:14px">
+          <h3 style="margin-top:6px">둘이 하는 방식</h3>
+          <div class="opts" id="segTwoMode">
+            <button class="opt" data-v="coop" aria-pressed="true">협동<small>점수가 팀 게이지에 함께 쌓여요. 동시에 성공하면 하모니 보너스</small></button>
+            <button class="opt" data-v="versus" aria-pressed="false">대결<small>같은 게임을 나란히 겨뤄요. 난이도는 각자 따로라 공정해요</small></button>
+            <button class="opt" data-v="relay" aria-pressed="false">릴레이<small>한 판씩 번갈아 해요. 쉬는 사람은 박수로 응원 점수를 보태요</small></button>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="loginPanel">
+        <div class="login-head"><h3>이름 고르기</h3><p class="note" id="loginHint">내 이름을 누르면 지난 기록에 이어서 해요</p></div>
+        <div class="seats" id="loginSlots"></div>
+        <div class="login-pick">
+          <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="text" id="loginSearch" placeholder="이름으로 찾기" autocomplete="off" aria-label="이름으로 찾기"></label>
+          <div class="who-grid" id="whoGrid"></div>
+        </div>
+        <div id="loginMsg"></div>
+      </div>
+      </div>
+      <div class="step" data-step="2" hidden>
+        <h2 class="step-title">어떻게 할까요?</h2>
+      <div class="grid2">
+        <div class="panel">
+          <h3>자세</h3>
+          <div class="opts" id="segPosture">
+            <button class="opt" data-v="stand" aria-pressed="true"><span class="oi">🧍</span>서서<small>스쿼트까지 온몸으로</small></button>
+            <button class="opt" data-v="seat" aria-pressed="false"><span class="oi">🪑</span>앉아서<small>바퀴 없는 의자에서 상체 위주로</small></button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>조작</h3>
+          <div class="opts" id="segInput">
+            <button class="opt" data-v="camera" aria-pressed="true"><span class="oi">📷</span>카메라<small>웹캠이 몸 동작을 읽어요</small></button>
+            <button class="opt" data-v="mouse" aria-pressed="false"><span class="oi">🖱️</span>마우스 시연<small>카메라 없이 마우스와 숫자키로</small></button>
+          </div>
+          <p class="note" id="inputDesc"></p>
+        </div>
+      </div>
+      </div>
+      <div class="step" data-step="3" hidden>
+        <h2 class="step-title">오늘의 성우를 골라요</h2>
+        <p class="lead" style="max-width:none">누르면 목소리를 들려줘요. 게임 내내 이 캐릭터가 안내하고 응원해요.</p>
+      <div class="panel">
+        
+        <div class="opts" id="voiceList" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))"></div>
+      </div>
+      </div>
+      <div class="step-nav"><button id="btnSetupBack">이전</button><button class="gold big" id="btnSetupNext">다음</button></div>
+    </div>
+  </section>
+
+  <!-- 안전 -->
+  <section class="screen" id="scr-safety" hidden>
+    <div class="wrap" style="max-width:820px">
+      <div class="stepper" id="stepper2"></div><h2 class="step-title">시작 전에 안전을 확인해요</h2>
+      <div class="panel" id="safetyList"></div>
+      <p class="note">어지럽거나 아프면 바로 멈추세요. 화면 오른쪽 아래 <b>그만</b> 버튼이나 스페이스바로 언제든 멈출 수 있어요.</p>
+      <div class="step-nav"><button data-go="setup">이전</button><button class="gold big" id="btnSafetyNext" disabled>확인했어요 · 시작</button></div>
+    </div>
+  </section>
+
+  <!-- 마을 지도 -->
+  <section class="screen" id="scr-map" hidden>
+    <div class="wrap wide">
+      <div class="row between">
+        <div><span class="eyebrow" id="mapWho"></span><h2>오늘은 어디로 갈까요?</h2></div>
+        <div class="row"><button class="small" id="btnRecal">몸 다시 인식</button><button class="link" data-go="title">처음으로</button></div>
+      </div>
+      <div class="themes" id="themeList"></div>
+      <div class="mapgrid">
+        <div class="mapmain">
+          <div class="cat-tabs" id="catTabs"></div>
+          <div class="places" id="placeList"></div>
+        </div>
+        <aside class="panel course-side">
+          <div><h3>내 코스</h3><p class="note">아침 체조 → 고른 곳 → 노을 스트레칭</p></div>
+          <ol class="course-list" id="courseList"></ol>
+          <button class="gold big" id="btnCourse">코스 시작</button>
+          <button id="btnQuick" disabled>한 곳만 한 판</button>
+          <div class="side-sep"></div>
+          <div class="row between"><h3>오늘의 미션</h3><span class="chip gold">하나에 씨앗 2개</span></div>
+          <div id="missionList"></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="scr-result" hidden><div class="wrap" id="resultWrap"></div></section>
+  <section class="screen" id="scr-garden" hidden><div class="wrap" id="gardenWrap"></div></section>
+  <section class="screen" id="scr-admin" hidden><div class="wrap" id="adminWrap"></div></section>
+  <section class="screen" id="scr-records" hidden><div class="wrap" id="recordsWrap"></div></section>
+  <section class="screen" id="scr-settings" hidden><div class="wrap" id="settingsWrap"></div></section>
+
+  <div id="hud" hidden>
+    <button id="pauseBtn">잠깐 멈춤</button>
+    <button id="stopBtn">그만</button>
+  </div>
+  <div id="frame"></div>
+  <div id="overlay" hidden><div class="panel" id="overlayCard"></div></div>
+  <div id="toast" style="opacity:0"></div>
+</div>
+
+<script src="assets/voice/index.js"></script>

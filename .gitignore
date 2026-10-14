@@ -1,0 +1,9 @@
+# 비밀값·원본은 올리지 않음
+_secret/
+*.key
+voicegen/gen.log
+voicegen/_*
+models/
+dist/
+*.png
+node_modules/
