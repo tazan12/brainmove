@@ -28,10 +28,16 @@ const PCOL = [COLORS.p1, COLORS.p2];
 const STORE_KEY = 'brainmove.v2', OLD_KEYS = ['brainmove.v1'];
 const DEFAULT_SETTINGS = {
   roundSec: 180, danceEase: 1.5, courseGames: 3, restSec: 20, fixedLevel: 0, fx: 'mid', voice: true, voiceRate: 0.95,
-  volSfx: 0.8, volMusic: 0.35, volVoice: 1, shapes: false, skeleton: true, model: 'lite', cameraId: '', unlockAll: false, warmupSec: 90, cooldownSec: 50,
-  selfRegister: false, narrator: 'basic', voiceTune: {}
+  volSfx: 0.8, volMusic: 0.55, volVoice: 1, shapes: false, skeleton: true, model: 'lite', cameraId: '', unlockAll: false, warmupSec: 90, cooldownSec: 50,
+  selfRegister: true, narrator: 'basic', voiceTune: {}, orgName: '', ver: 3
 };
 const normName = n => String(n || '').replace(/\s+/g, ' ').trim();
+// 화면에는 실명을 가려서(김O호) 보여 줌. 두 글자는 '김O', 네 글자는 '남궁O수'처럼 첫 글자·끝 글자만 남김
+const maskName = n => { const c = [...normName(n)]; if (c.length <= 1) return c.join(''); if (c.length === 2) return c[0] + 'O'; if (c.length === 4 && !/\s/.test(c.join(''))) return c[0] + c[1] + 'O' + c[3]; return c[0] + c.slice(1, -1).map(x => /\s/.test(x) ? ' ' : 'O').join('') + c[c.length - 1]; };
+const birthTxt = b => b ? String(b).replace('-', '.') : '';
+// 열쇠 → 화면 표시: who '김O호', whoFull '김O호 · 1948.03'
+const who = key => { const p = Store.data?.profiles?.[key]; return maskName((p && p.name) || key); };
+const whoFull = key => { const p = Store.data?.profiles?.[key]; const b = p && p.birth; return who(key) + (b ? ' · ' + birthTxt(b) : ''); };
 const Store = {
   data: null,
   load() {
@@ -39,28 +45,42 @@ const Store = {
     try { this.data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) { this.data = null; }
     if (!this.data || typeof this.data !== 'object') this.data = {};
     this.data.profiles ||= {};
-    this.data.settings = Object.assign({}, DEFAULT_SETTINGS, this.data.settings || {});
+    const raw = this.data.settings || {}, old = Object.keys(raw).length && (raw.ver || 0) < 3;
+    this.data.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
+    // v3: 배경음악이 너무 작게 들리던 값(0.35)을 올리고, 준비 화면에서 바로 등록할 수 있게 바꿈
+    if (old) { const s = this.data.settings; if (s.volMusic <= 0.35) s.volMusic = 0.55; s.selfRegister = true; s.ver = 3; }
     this.data.admin ||= {};
     return this.data;
   },
   save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(this.data)); return true; } catch (e) { return false; } },
   get settings() { return this.data.settings; },
-  // 등록된 이름 찾기(앞뒤 공백·영문 대소문자 무시) → 저장된 정확한 이름
-  find(name) { const n = normName(name).toLowerCase(); if (!n) return null; return Object.keys(this.data.profiles).find(k => k.toLowerCase() === n) || null; },
+  // 저장 열쇠: 실명 + 생년월(동명이인 구분). 예전 기록은 이름만으로 된 열쇠도 그대로 씀
+  keyOf(name, birth) { return birth ? normName(name) + ' ' + birth : normName(name); },
+  realName(key) { const p = this.data.profiles[key]; return (p && p.name) || key; },
+  // 이름으로 찾기(앞뒤 공백·영문 대소문자 무시) → 이름이 똑같은 사람들의 열쇠 목록
+  matches(name) { const n = normName(name).toLowerCase(); if (!n) return []; return this.names().filter(k => normName(this.realName(k)).toLowerCase() === n || k.toLowerCase() === n); },
+  find(name) { const m = this.matches(name); return m.length === 1 ? m[0] : null; },
+  checkBirth(b) { if (!b) return null; const m = /^(\d{4})-(\d{2})$/.exec(b); if (!m) return '생년월을 골라 주세요'; const y = +m[1], mo = +m[2], ny = new Date().getFullYear(); if (y < 1900 || y > ny || mo < 1 || mo > 12) return '생년월이 올바르지 않아요'; return null; },
   register(name, opt = {}) {
     name = normName(name); if (!name) return { ok: false, msg: '이름을 적어 주세요' };
-    if (name.length > 20) return { ok: false, msg: '이름은 20자까지 적을 수 있어요' };
-    if (this.find(name)) return { ok: false, msg: `'${name}' 님은 이미 등록되어 있어요` };
-    const p = this.profile(name); p.memo = normName(opt.memo); p.defaultPosture = opt.posture === 'seat' ? 'seat' : 'stand'; p.registered = Date.now();
-    this.save(); return { ok: true, name };
+    if ([...name].length > 20) return { ok: false, msg: '이름은 20자까지 적을 수 있어요' };
+    const birth = opt.birth || ''; if (opt.needBirth && !birth) return { ok: false, msg: '생년월을 골라 주세요' };
+    const be = this.checkBirth(birth); if (be) return { ok: false, msg: be };
+    const key = this.keyOf(name, birth);
+    if (this.data.profiles[key]) return { ok: false, msg: `${whoFull(key)} 님은 이미 등록되어 있어요` };
+    const p = this.profile(key); p.name = name; p.birth = birth; p.memo = normName(opt.memo); p.defaultPosture = opt.posture === 'seat' ? 'seat' : 'stand'; p.registered = Date.now();
+    if (opt.consent) p.consent = Date.now();
+    this.save(); return { ok: true, name: key };
   },
-  rename(oldName, newName) {
+  rename(oldKey, newName, birth) {
     newName = normName(newName); if (!newName) return { ok: false, msg: '이름을 적어 주세요' };
-    const hit = this.find(newName); if (hit && hit !== oldName) return { ok: false, msg: `'${newName}' 님은 이미 등록되어 있어요` };
-    const ps = this.data.profiles, p = ps[oldName]; if (!p) return { ok: false, msg: '참여자를 찾지 못했어요' };
-    delete ps[oldName]; p.name = newName; ps[newName] = p;
-    for (const q of Object.values(ps)) for (const s of q.sessions || []) if (s.partner === oldName) s.partner = newName;
-    this.save(); return { ok: true, name: newName };
+    const ps = this.data.profiles, p = ps[oldKey]; if (!p) return { ok: false, msg: '참여자를 찾지 못했어요' };
+    if (birth === undefined) birth = p.birth || '';
+    const be = this.checkBirth(birth); if (be) return { ok: false, msg: be };
+    const key = this.keyOf(newName, birth); if (key !== oldKey && ps[key]) return { ok: false, msg: `${maskName(newName)}${birth ? ' · ' + birthTxt(birth) : ''} 님은 이미 등록되어 있어요` };
+    delete ps[oldKey]; p.name = newName; p.birth = birth; ps[key] = p;
+    for (const q of Object.values(ps)) for (const s of q.sessions || []) if (s.partner === oldKey) s.partner = key;
+    this.save(); return { ok: true, name: key };
   },
   remove(name) { delete this.data.profiles[name]; this.save(); },
   clearRecords() {
@@ -151,20 +171,27 @@ const Sound = {
   coin() { this.tone(988, 0.08, 'square', 0.12); this.tone(1319, 0.25, 'square', 0.12, 0.08); },
   // ---- 배경 음악: assets/music/<곡>.mp3 (Lyria로 작곡한 테마곡). 파일이 없으면 합성 루프로 대신함 ----
   trackId: 'game', el: null, elId: null, bad: {}, duck: 1,
-  musicVol() { return Store.settings.volMusic * 0.55 * this.duck; },
-  track(id) { this.trackId = id; if (this.musicOn && this.elId !== id) { this.stopMusic(); this.startMusic(this.tempo); } },
+  // 말할 때는 음악을 55%로만 줄임(예전 40%×0.55배는 거의 안 들렸음)
+  musicVol() { return Store.settings.volMusic * this.duck; },
+  TRACKS: ['title', 'game', 'dance', 'warmup', 'cooldown'],
+  track(id) { if (!this.TRACKS.includes(id)) id = 'title'; this.trackId = id; if (this.musicOn && this.elId !== id) { this.stopMusic(); this.startMusic(this.tempo); } },
+  // 브라우저가 첫 클릭 전 재생을 막으면(autoplay) 다음 클릭·키 입력 때 다시 틀어 줌
+  blocked: false,
+  tryPlay(a) { const p = a.play(); if (p && p.then) p.then(() => { this.blocked = false; }).catch(e => { if (e && e.name === 'NotAllowedError') this.blocked = true; }); },
+  resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); if (this.musicOn && this.el && this.el.paused) this.tryPlay(this.el); },
   fileMusic() {
     const id = this.trackId; if (this.bad[id] || location.protocol === 'about:') return false;
-    if (this.el && this.elId === id) { this.el.volume = clamp(this.musicVol(), 0, 1); this.el.play().catch(() => { }); return true; }
+    if (this.el && this.elId === id) { this.el.volume = clamp(this.musicVol(), 0, 1); this.tryPlay(this.el); return true; }
     try {
-      const a = new Audio('assets/music/' + id + '.mp3'); a.loop = true; a.volume = clamp(this.musicVol(), 0, 1); a.preservesPitch = true;
+      if (this.el) { try { this.el.pause(); } catch (e) { } }
+      const a = new Audio('assets/music/' + id + '.mp3'); a.loop = true; a.preload = 'auto'; a.volume = clamp(this.musicVol(), 0, 1); a.preservesPitch = true;
       a.onerror = () => { this.bad[id] = true; if (this.el === a) { this.el = null; this.elId = null; if (this.musicOn) { this.musicOn = false; this.startMusic(this.tempo); } } };
-      a.play().catch(() => { }); this.el = a; this.elId = id; return true;
+      this.el = a; this.elId = id; this.tryPlay(a); return true;
     } catch (e) { return false; }
   },
-  setDuck(on) { this.duck = on ? 0.4 : 1; if (this.el) this.el.volume = clamp(this.musicVol(), 0, 1); if (this.music) this.music.gain.value = Store.settings.volMusic * 0.5 * this.duck; },
+  setDuck(on) { this.duck = on ? 0.55 : 1; if (this.el) this.el.volume = clamp(this.musicVol(), 0, 1); if (this.music) this.music.gain.value = Store.settings.volMusic * 0.5 * this.duck; },
   // 이긴 화면 팡파르(파일이 있으면 파일로)
-  fanfareTrack() { if (this.bad.fanfare) return this.fanfare(); try { const a = new Audio('assets/music/fanfare.mp3'); a.volume = clamp(Store.settings.volMusic * 0.8, 0, 1); a.onerror = () => { this.bad.fanfare = true; this.fanfare(); }; a.play().catch(() => this.fanfare()); } catch (e) { this.fanfare(); } },
+  fanfareTrack() { if (this.bad.fanfare) return this.fanfare(); try { const a = new Audio('assets/music/fanfare.mp3'); a.volume = clamp(Store.settings.volMusic * 1.3, 0, 1); a.onerror = () => { this.bad.fanfare = true; this.fanfare(); }; a.play().catch(() => this.fanfare()); } catch (e) { this.fanfare(); } },
   startMusic(tempo = 100) {
     this.tempo = tempo; if (this.musicOn) return;
     if (this.fileMusic()) { this.musicOn = true; this.setTempo(tempo); return; }

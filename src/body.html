@@ -8,6 +8,7 @@
   <section class="screen" id="scr-title">
     <button class="link admin-link" id="btnAdmin">관리자</button>
     <div class="hero">
+      <span class="title-org org-name" hidden></span>
       <span class="eyebrow">몸으로 생각하는 마을</span>
       <h1>브레인무브</h1>
       <span class="sub nacre-text">무지개 마을</span>
@@ -16,7 +17,7 @@
         <button class="gold big" id="btnStart">시작하기</button>
         <button id="btnGardenTop">정원과 도감</button>
       </div>
-      <p class="foot">크롬 브라우저와 웹캠이 필요해요. 카메라 영상은 이 컴퓨터 안에서만 처리되고 저장하거나 보내지 않아요.</p>
+      <p class="foot">크롬 브라우저와 웹캠이 필요해요. 카메라 영상은 이 컴퓨터 안에서만 처리되고 저장하거나 보내지 않아요. 참여자 이름은 화면에 김O호처럼 가려서 보이고, 기록은 이 컴퓨터에만 남아요.</p>
     </div>
   </section>
 
@@ -42,7 +43,7 @@
         </div>
       </div>
       <div class="panel" id="loginPanel">
-        <div class="login-head"><h3>이름 고르기</h3><p class="note" id="loginHint">내 이름을 누르면 지난 기록에 이어서 해요</p></div>
+        <div class="login-head"><div><h3>이름 고르기</h3><p class="note" id="loginHint">내 이름을 누르면 지난 기록에 이어서 해요. 이름은 김O호처럼 가려서 보여요.</p></div><button class="small gold" id="btnRegister">＋ 새 참여자 등록</button></div>
         <div class="seats" id="loginSlots"></div>
         <div class="login-pick">
           <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input type="text" id="loginSearch" placeholder="이름으로 찾기" autocomplete="off" aria-label="이름으로 찾기"></label>

@@ -98,7 +98,7 @@ class BaseGame {
       g.save(); g.globalAlpha = act ? 1 : 0.5;
       lacquerPanel(g, x0, y0, w, h, 18, 0.88);
       g.fillStyle = P.color; roundRect(g, x0 + 18, y0, w - 36, 4, 2); g.fill();
-      plainText(g, (this.players.length > 1 ? (i ? '2P · ' : '1P · ') : '') + names[i], x0 + 20, y0 + 30, 20, P.color, 'left', 700);
+      plainText(g, (this.players.length > 1 ? (i ? '2P · ' : '1P · ') : '') + who(names[i]), x0 + 20, y0 + 30, 20, P.color, 'left', 700);
       plainText(g, `${this.lv(i)}단계`, x0 + w - 20, y0 + 30, 17, PAL.gold2, 'right', 600);
       g.font = `800 44px ${SERIF}`; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = PAL.ivory; g.fillText(ps.score.toLocaleString(), x0 + 18, y0 + 72);
       if (ps.combo >= 2) { plainText(g, `콤보 ${ps.combo}`, x0 + w - 20, y0 + 74, 22, ps.fever > 0 ? '#F5C9E2' : PAL.gold2, 'right', 700); }

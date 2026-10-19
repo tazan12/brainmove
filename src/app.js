@@ -9,7 +9,7 @@ const App = {
     // 시작 화면 배경 영상(있을 때만). 없거나 못 읽으면 그림 그대로
     const bv = $('#bgVideo'); bv.addEventListener('loadeddata', () => { bv.hidden = false; this.syncVideo(); }); bv.addEventListener('error', () => bv.remove()); bv.src = ASSETS.video;
     try { ['800 40px Hahmlet', '700 40px Hahmlet', '600 20px "IBM Plex Sans KR"', '700 20px "IBM Plex Sans KR"'].forEach(f => document.fonts.load(f)); } catch (e) { }
-    this.renderSafety();
+    this.renderSafety(); this.renderOrg();
     $$('[data-go]').forEach(b => b.addEventListener('click', () => this.show(b.dataset.go)));
     $('#btnStart').onclick = () => { Sound.init(); this.openSetup(); };
     $('#btnAdmin').onclick = () => { Sound.init(); this.openAdmin(); };
@@ -22,6 +22,9 @@ const App = {
     $('#stopBtn').onclick = () => this.askStop();
     $('#pauseBtn').onclick = () => this.togglePause();
     addEventListener('keydown', e => this.onKey(e, true));
+    // 첫 클릭·터치·키 입력 때 소리 장치를 깨우고, 막혀 있던 배경음악을 다시 틀어 줌
+    const wake = () => { Sound.init(); Sound.resume(); };
+    addEventListener('pointerdown', wake, true); addEventListener('keydown', wake, true); addEventListener('touchstart', wake, { capture: true, passive: true });
     addEventListener('keyup', e => this.onKey(e, false));
     addEventListener('mousemove', e => { const m = Pose.demo.mouse; m.x = (e.clientX - View.ox) / View.dw; m.y = (e.clientY - View.oy) / View.dh; m.inside = true; });
     $('#game').addEventListener('click', e => HandButtons.click(e.clientX, e.clientY));
@@ -38,10 +41,11 @@ const App = {
     if (!play) { $('#overlay').hidden = true; }
     const sc = $('#scr-' + name); if (sc) sc.scrollTop = 0;
     this.syncVideo();
-    // 마을 지도에서는 테마곡, 처음 화면·준비 화면에서는 조용히
-    if (name === 'map') { Sound.init(); Sound.track('title'); Sound.startMusic(100); } else if (!play && name !== 'result') Sound.stopMusic();
+    // 처음 화면·준비·마을 지도에서는 테마곡, 관리자·정원·기록 화면에서는 조용히
+    if (['title', 'setup', 'safety', 'map'].includes(name)) { Sound.init(); Sound.track('title'); Sound.startMusic(100); } else if (!play && name !== 'result') Sound.stopMusic();
   },
 
+  renderOrg() { const o = Store.settings.orgName; $$('.org-name').forEach(el => { el.textContent = o || ''; el.hidden = !o; }); },
   syncVideo() { const v = $('#bgVideo'); if (!v || v.hidden) return; const on = !$('#scr-title').hidden; if (on) v.play().catch(() => { }); else v.pause(); },
 
   /* ---------- 인원·모드 ---------- */
@@ -56,6 +60,7 @@ const App = {
     seg('segPlayers', 'n', upd); seg('segTwoMode', 'twoMode', upd); seg('segPosture', 'posture'); seg('segInput', 'input', upd);
     this.renderVoices();
     $('#loginSearch').addEventListener('input', () => this.renderLogin());
+    $('#btnRegister').onclick = () => { Sound.init(); this.openRegister(/[0-9]/.test($('#loginSearch').value) ? '' : $('#loginSearch').value); };
     $('#loginSearch').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this.loginByName($('#loginSearch').value); } });
     $('#btnSetupNext').onclick = () => {
       if (this.setupStep === 1) {
@@ -83,15 +88,52 @@ const App = {
   },
   renderVoices() {
     const cur = Narr.id;
-    $('#voiceList').innerHTML = Object.entries(PERSONAS).map(([id, P]) => `<button class="opt voice" data-v="${id}" aria-pressed="${id === cur}" style="--pc:${P.color};--pink:${P.ink}"><span class="vhead"><span class="vseal">${P.seal}</span>${P.name}</span><small>${P.desc}</small><small class="say">"${esc(P.sample)}"</small></button>`).join('');
-    $$('#voiceList .voice').forEach(b => b.onclick = () => { Sound.init(); Store.settings.narrator = b.dataset.v; Store.settings.voice = true; Store.save(); $$('#voiceList .voice').forEach(x => x.setAttribute('aria-pressed', x === b)); Narr.sample(b.dataset.v); });
+    // 성우 녹음 상태를 카드에 표시: 녹음이 끝난 캐릭터만 고를 수 있음(덜 된 캐릭터는 '녹음 중 NN%')
+    const badge = id => !Narr.recorded ? '' : Narr.ready(id) ? '<span class="vrec ok">성우 녹음</span>' : `<span class="vrec">녹음 중 ${Math.round(Narr.coverage(id) * 100)}%</span>`;
+    $('#voiceList').innerHTML = Object.entries(PERSONAS).map(([id, P]) => `<button class="opt voice${Narr.usable(id) ? '' : ' wait'}" data-v="${id}" aria-pressed="${id === cur}" style="--pc:${P.color};--pink:${P.ink}"><span class="vhead"><span class="vseal">${P.seal}</span>${P.name}${badge(id)}</span><small>${P.desc}</small><small class="say">"${esc(P.sample)}"</small></button>`).join('');
+    $$('#voiceList .voice').forEach(b => b.onclick = () => {
+      Sound.init(); const id = b.dataset.v;
+      if (!Narr.usable(id)) { toast(`'${PERSONAS[id].name}' 목소리는 아직 성우 녹음 중이에요. 녹음이 끝나면 고를 수 있어요`); Narr.sample(id); return; }
+      Store.settings.narrator = id; Store.settings.voice = true; Store.save(); $$('#voiceList .voice').forEach(x => x.setAttribute('aria-pressed', x === b)); Narr.sample(id);
+    });
   },
   openSetup() { this.setup.picked = []; $('#loginSearch').value = ''; this.updSetup(); this.setStep(1); this.show('setup'); },
   // 이름으로 로그인: 등록된 이름이면 그 사람으로, 아니면 안내(설정에 따라 바로 등록)
   loginByName(raw) {
-    const name = Store.find(raw);
-    if (name) { this.pick(name, true); $('#loginSearch').value = ''; this.renderLogin(); return; }
+    const m = Store.matches(raw);
+    if (m.length === 1) { this.pick(m[0], true); $('#loginSearch').value = ''; this.renderLogin(); return; }
+    if (m.length > 1) { this.renderLogin(null, m.length); return; }   // 동명이인: 생년월을 보고 고르게
     this.renderLogin(normName(raw));
+  },
+  // 준비 화면에서 바로 새 참여자 등록(관리자 화면을 오가지 않음)
+  openRegister(prefill) {
+    const needPin = !Store.settings.selfRegister && Admin.hasPin && !Admin.unlocked;
+    this.overlay(`<h3>새 참여자 등록</h3>
+      <div class="regform">
+        <label class="field">이름<input type="text" id="rgName" maxlength="20" value="${esc(prefill || '')}" placeholder="예: 김영호" autocomplete="off"></label>
+        <div class="field">생년월${birthSelect('rgB')}</div>
+        <div class="field">기본 자세<div class="opts" id="rgPost"><button class="opt" data-v="stand" aria-pressed="true">🧍 서서</button><button class="opt" data-v="seat" aria-pressed="false">🪑 앉아서</button></div></div>
+        <label class="field">메모 (선택)<input type="text" id="rgMemo" maxlength="40" placeholder="예: 화요일반, 보청기 사용" autocomplete="off"></label>
+        ${needPin ? '<label class="field">관리자 PIN<input type="password" inputmode="numeric" id="rgPin" maxlength="8" autocomplete="off"></label>' : ''}
+        <label class="consent full"><input type="checkbox" id="rgOk"><span>본인 또는 보호자에게 이름·생년월과 활동 기록을 이 컴퓨터에 저장하는 데 동의를 받았어요</span></label>
+        <p class="note full" style="margin:0">화면에는 이름이 <b>김O호 · 1948.03</b>처럼 가려서 보여요. 기록은 이 컴퓨터의 브라우저에만 저장되고 인터넷으로 보내지 않아요.</p>
+        <p class="err full" id="rgMsg" role="alert" style="margin:0;min-height:1.2em"></p>
+      </div>
+      <div class="row" style="justify-content:center"><button class="gold" id="rgSave">등록하고 고르기</button><button id="rgCancel">취소</button></div>`);
+    const C = $('#overlayCard'); let posture = 'stand';
+    $$('#rgPost button').forEach(b => b.onclick = () => { posture = b.dataset.v; $$('#rgPost button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+    $('#rgCancel').onclick = () => { $('#overlay').hidden = true; };
+    const err = t => { $('#rgMsg').textContent = t; Sound.soft(); };
+    $('#rgSave').onclick = async () => {
+      if (!normName($('#rgName').value)) return err('이름을 적어 주세요');
+      const birth = readBirth(C, 'rgB'); if (!birth) return err('생년월(태어난 해와 달)을 골라 주세요');
+      if (!$('#rgOk').checked) return err('저장 동의를 받았는지 확인하고 체크해 주세요');
+      if (needPin) { const r = await Admin.check($('#rgPin').value); if (!r.ok) return err(r.msg); Admin.lock(); }
+      const r = Store.register($('#rgName').value, { birth, memo: $('#rgMemo').value, posture, consent: true, needBirth: true });
+      if (!r.ok) return err(r.msg);
+      $('#overlay').hidden = true; $('#loginSearch').value = ''; Sound.coin(); toast(`${whoFull(r.name)} 님을 등록했어요`); this.pick(r.name, true);
+    };
+    setTimeout(() => $('#rgName').focus(), 50);
   },
   pick(name, add) {
     const pk = this.setup.picked, k = pk.indexOf(name);
@@ -102,34 +144,36 @@ const App = {
     if (prof.length) { const v = prof.every(p => p.defaultPosture === 'seat') ? 'seat' : 'stand'; this.setup.posture = v; $$('#segPosture button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v)); }
     this.renderLogin();
   },
-  renderLogin(notFound) {
+  renderLogin(notFound, twins) {
     const S = this.setup, q = normName($('#loginSearch').value).toLowerCase(), names = Store.names();
-    const shown = q ? names.filter(n => n.toLowerCase().includes(q)) : names;
+    // 찾기: 실명 일부나 생년(예: 1948)으로. 화면에는 가린 이름만 보임
+    const shown = q ? names.filter(n => { const p = Store.data.profiles[n]; return normName(Store.realName(n)).toLowerCase().includes(q) || (p.birth && p.birth.replace('-', '').includes(q.replace(/[.\-\s]/g, ''))); }) : names;
+    const bt = p => p.birth ? birthTxt(p.birth) + '년생 · ' : '';
     const AV = ['#D8576B', '#3C78D8', '#2E9E6A', '#C9962E', '#8A57D6', '#1C93B5', '#D9703A'];
-    const ava = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return `<span class="ava" style="--ac:${AV[h % AV.length]}">${esc([...n][0] || '?')}</span>`; };
+    const ava = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return `<span class="ava" style="--ac:${AV[h % AV.length]}">${esc([...Store.realName(n)][0] || '?')}</span>`; };
     const when = p => { const last = p.sessions.at(-1); return last ? '최근 ' + new Date(last.ts).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) + ' · ' + p.sessions.length + '회' : '첫 참여'; };
     const role = i => S.n === 1 ? '오늘의 참여자' : (i ? '2P · 오른쪽' : '1P · 왼쪽');
     $('#loginSlots').innerHTML = Array.from({ length: S.n }, (_, i) => { const n = S.picked[i], p = n && Store.data.profiles[n];
       const rc = S.n === 2 ? ` style="color:${PCOL[i]};box-shadow:inset 0 0 0 1.5px ${PCOL[i]}"` : '';
-      return n ? `<div class="seat filled"><span class="role"${rc}>${role(i)}</span>${ava(n)}<div class="ph"><b>${esc(n)} 님</b><small>${esc(p.memo ? p.memo + ' · ' : '')}${when(p)} · 반가워요!</small></div><button class="x" data-unpick="${esc(n)}" aria-label="${esc(n)} 님 빼기">✕</button></div>`
+      return n ? `<div class="seat filled"><span class="role"${rc}>${role(i)}</span>${ava(n)}<div class="ph"><b>${esc(who(n))} 님</b><small>${esc(bt(p))}${esc(p.memo ? p.memo + ' · ' : '')}${when(p)}</small></div><button class="x" data-unpick="${esc(n)}" aria-label="${esc(who(n))} 님 빼기">✕</button></div>`
         : `<div class="seat empty"><span class="role"${rc}>${role(i)}</span><span class="ava">?</span><div class="ph"><b>아래에서 이름을 눌러 주세요</b></div></div>`; }).join('');
     $$('#loginSlots [data-unpick]').forEach(b => b.onclick = () => this.pick(b.dataset.unpick));
     $('#whoGrid').innerHTML = shown.map(n => { const p = Store.data.profiles[n], i = S.picked.indexOf(n);
-      return `<button class="who" data-n="${esc(n)}" aria-pressed="${i >= 0}">${i >= 0 ? `<span class="tick" ${S.n === 2 ? `style="background:${PCOL[i]}"` : ''}>${S.n === 2 ? i + 1 + 'P' : '✓'}</span>` : ''}${ava(n)}<span class="nm">${esc(n)}<small>${esc(p.memo ? p.memo + ' · ' : '')}${when(p)}</small></span></button>`; }).join('');
+      return `<button class="who" data-n="${esc(n)}" aria-pressed="${i >= 0}">${i >= 0 ? `<span class="tick" ${S.n === 2 ? `style="background:${PCOL[i]}"` : ''}>${S.n === 2 ? i + 1 + 'P' : '✓'}</span>` : ''}${ava(n)}<span class="nm">${esc(who(n))}<small>${esc(bt(p))}${esc(p.memo ? p.memo + ' · ' : '')}${when(p)}</small></span></button>`; }).join('');
     $$('#whoGrid .who').forEach(b => b.onclick = () => this.pick(b.dataset.n));
     const msg = $('#loginMsg');
-    if (!names.length) msg.innerHTML = `<p class="muted">아직 등록된 참여자가 없어요. <b>관리자</b>에서 참여자를 먼저 등록해 주세요.</p><div class="row" style="margin-top:10px"><button class="small" id="goAdmin">관리자 모드로</button></div>`;
-    else if (notFound) msg.innerHTML = `<p class="err">'${esc(notFound)}' 님은 등록되어 있지 않아요.</p>` + (Store.settings.selfRegister ? `<div class="row" style="margin-top:10px"><button class="small gold" id="selfReg">'${esc(notFound)}' 이름으로 새로 등록하기</button></div>` : `<p class="note">관리자에게 등록을 부탁해 주세요.</p>`);
+    if (!names.length) msg.innerHTML = `<p class="muted">아직 등록된 참여자가 없어요. 위의 <b>＋ 새 참여자 등록</b>을 눌러 이름과 생년월을 등록해 주세요.</p>`;
+    else if (twins) msg.innerHTML = `<p class="note">같은 이름이 ${twins}명 있어요. 생년월을 보고 골라 주세요.</p>`;
+    else if (notFound) msg.innerHTML = `<p class="err">아직 등록되지 않은 이름이에요.</p><div class="row" style="margin-top:10px"><button class="small gold" id="selfReg">이 이름으로 새로 등록하기</button></div>`;
     else if (q && !shown.length) msg.innerHTML = `<p class="note">찾는 이름이 없어요. 이름을 끝까지 적고 Enter를 누르면 확인해요.</p>`;
     else msg.innerHTML = S.n === 2 ? '<p class="note">먼저 누른 사람이 1P(왼쪽), 다음 사람이 2P(오른쪽)예요. 다시 누르면 취소돼요.</p>' : '';
-    $('#goAdmin') && ($('#goAdmin').onclick = () => this.openAdmin());
-    $('#selfReg') && ($('#selfReg').onclick = () => { const r = Store.register(notFound); if (r.ok) { toast(`'${r.name}' 님을 등록했어요`); $('#loginSearch').value = ''; this.pick(r.name, true); } else toast(r.msg); });
+    $('#selfReg') && ($('#selfReg').onclick = () => this.openRegister(notFound));
     $('#btnSetupNext').classList.toggle('dim', this.setupStep === 1 && S.picked.length < S.n);
   },
   pickGarden() {
     const names = Store.names();
     if (!names.length) { toast('아직 등록된 참여자가 없어요'); return; }
-    this.overlay(`<h3>누구의 정원을 볼까요?</h3><div class="who-grid" style="width:100%">${names.map(n => `<button class="who" data-n="${esc(n)}">${esc(n)}<small>${Store.data.profiles[n].garden.length}그루</small></button>`).join('')}</div><button class="link" id="ovClose">닫기</button>`);
+    this.overlay(`<h3>누구의 정원을 볼까요?</h3><div class="who-grid" style="width:100%">${names.map(n => `<button class="who" data-n="${esc(n)}"><span class="nm">${esc(who(n))}<small>${esc(birthTxt(Store.data.profiles[n].birth))} · ${Store.data.profiles[n].garden.length}그루</small></span></button>`).join('')}</div><button class="link" id="ovClose">닫기</button>`);
     $$('#overlayCard .who').forEach(b => b.onclick = () => { $('#overlay').hidden = true; this.openGarden(b.dataset.n, [b.dataset.n]); });
     $('#ovClose').onclick = () => $('#overlay').hidden = true;
   },
@@ -231,8 +275,8 @@ const App = {
     this.show('play'); $('#hud').hidden = false; this.startLoop();
     Pose.players.forEach(P => { P.base = null; P.baseSamples = []; });
     this.stage = new CalibStage(Pose.players, this.setup.n, () => { this.calibrated = true; this.stage = null; this.openMap(); });
-    Sound.track(st.kind === 'game' ? (st.id === 'dance' ? 'dance' : 'game') : st.kind === 'rest' ? 'title' : st.kind);
-    Sound.startMusic(Sound.tempo || 100);   // 리듬 게임처럼 음악을 멈췄던 단계 다음에도 다시 흐르게
+    // (고침) 예전에는 여기서 없는 변수 st를 써서 오류가 나 몸 인식 안내 음성·음악이 나오지 않았음
+    Sound.track('title'); Sound.startMusic(100);
     this.stage.start();
   },
 
@@ -240,7 +284,7 @@ const App = {
   openMap() {
     this.show('map');
     const names = this.setup.names.slice(0, this.setup.n);
-    $('#mapWho').textContent = this.setup.n === 1 ? `${names[0]} 님의 마을` : `${names[0]} · ${names[1]} · ${{ coop: '협동', versus: '대결', relay: '릴레이' }[this.setup.twoMode]}`;
+    $('#mapWho').textContent = this.setup.n === 1 ? `${who(names[0])} 님의 마을` : `${who(names[0])} · ${who(names[1])} · ${{ coop: '협동', versus: '대결', relay: '릴레이' }[this.setup.twoMode]}`;
     if (!this.course.length) this.course = this.recommend();
     this.renderMap();
   },
@@ -296,7 +340,7 @@ const App = {
     $('#btnQuick').textContent = this.course.length ? `${GAMES[this.course[0]].short}만 한 판` : '한 곳만 한 판';
     // 오늘의 미션(1P 기준, 2인은 둘 다)
     const box = $('#missionList'); const names = this.setup.names.slice(0, this.setup.n);
-    box.innerHTML = names.map(n => { const pr = Store.profile(n); ensureMissions(pr); return (this.setup.n > 1 ? `<p class="note" style="margin-top:8px">${esc(n)}</p>` : '') + pr.missions.list.map(m => `<div class="mission ${m.done ? 'done' : ''}"><span class="mt">${m.done ? '✓ ' : ''}${esc(m.text)}</span><span class="note">${Math.min(m.prog, m.target)} / ${m.target}</span><span class="bar"><i style="width:${Math.min(100, m.prog / m.target * 100)}%"></i></span></div>`).join(''); }).join('');
+    box.innerHTML = names.map(n => { const pr = Store.profile(n); ensureMissions(pr); return (this.setup.n > 1 ? `<p class="note" style="margin-top:8px">${esc(who(n))}</p>` : '') + pr.missions.list.map(m => `<div class="mission ${m.done ? 'done' : ''}"><span class="mt">${m.done ? '✓ ' : ''}${esc(m.text)}</span><span class="note">${Math.min(m.prog, m.target)} / ${m.target}</span><span class="bar"><i style="width:${Math.min(100, m.prog / m.target * 100)}%"></i></span></div>`).join(''); }).join('');
     Store.save();
   },
 
@@ -305,7 +349,7 @@ const App = {
     Sound.init(); Voice.stop();
     const S = this.setup, n = S.n, mode = n === 1 ? 'solo' : S.twoMode;
     const names = S.names.slice(0, n), profiles = names.map(nm => Store.profile(nm));
-    applyPosture(S.posture); Narr.who = n === 1 ? names[0] + ' 님' : '두 분';
+    applyPosture(S.posture); Narr.who = n === 1 ? who(names[0]) + ' 님' : '두 분';
     const games = quick ? [this.course[0]] : this.course.slice();
     const stages = [];
     if (!quick) stages.push({ kind: 'warmup' });
@@ -441,7 +485,7 @@ const App = {
     let head = '';
     if (sum.mode === 'versus' && sum.players.length === 2) {
       const [a, b] = sum.players; const w = a.total === b.total ? null : (a.total > b.total ? a : b);
-      head = `<div class="panel" style="align-items:center;text-align:center"><span class="eyebrow">나란히 겨루기</span><h2>${w ? `${esc(w.name)} 님이 이겼어요` : '무승부예요'}</h2><p class="lead" style="max-width:none">${esc(a.name)} ${a.total.toLocaleString()}점 · ${esc(b.name)} ${b.total.toLocaleString()}점 · 서로 다른 난이도로 겨뤘어요</p></div>`;
+      head = `<div class="panel" style="align-items:center;text-align:center"><span class="eyebrow">나란히 겨루기</span><h2>${w ? `${esc(who(w.name))} 님이 이겼어요` : '무승부예요'}</h2><p class="lead" style="max-width:none">${esc(who(a.name))} ${a.total.toLocaleString()}점 · ${esc(who(b.name))} ${b.total.toLocaleString()}점 · 서로 다른 난이도로 겨뤘어요</p></div>`;
     } else if (sum.mode === 'coop' || sum.mode === 'relay') {
       head = `<div class="panel" style="align-items:center;text-align:center"><span class="eyebrow">${sum.mode === 'coop' ? '함께 모으기' : '번갈아 하기'}</span><h2>팀 점수 <span class="nacre-text">${sum.teamTotal.toLocaleString()}</span></h2><p class="lead" style="max-width:none">${sum.mode === 'coop' ? `팀 별 ${sum.teamStars}개 · 하모니 ${sum.harmony}번` : `응원 박수 ${sum.cheers}번`}${sum.restBonus ? ` · 하이파이브 보너스 ${sum.restBonus}` : ''}</p></div>`;
     }
@@ -460,7 +504,7 @@ const App = {
       return `
       <div class="panel cert">
         <span class="seal">참<br>잘했어요</span>
-        <div><span class="eyebrow" style="color:${PCOL[i]}">${sum.players.length > 1 ? (i ? '2P · 주황' : '1P · 청색') : '오늘의 기록'}</span><h3 style="font-size:34px;margin-top:4px">${esc(p.name)} 님</h3></div>
+        <div><span class="eyebrow" style="color:${PCOL[i]}">${sum.players.length > 1 ? (i ? '2P · 주황' : '1P · 청색') : '오늘의 기록'}</span><h3 style="font-size:34px;margin-top:4px">${esc(who(p.name))} 님</h3></div>
         <div class="res-tiles">
           <div class="rt"><span class="k">총점</span><span class="v">${p.total.toLocaleString()}</span></div>
           <div class="rt"><span class="k">모은 별</span><span class="v stars">★ ${stars}</span></div>
@@ -472,7 +516,7 @@ const App = {
         <div class="res-games">${p.games.length ? p.games.map(gm => `<div class="rg"><span class="th" style="background-image:url('${ASSETS[GAMES[gm.game].img]}')"></span><span class="rgb"><b>${GAMES[gm.game].short}</b><span class="stars">${'★'.repeat(gm.stars)}<span style="opacity:.25">${'★'.repeat(3 - gm.stars)}</span></span><small>정확도 ${pct(gm.accuracy)}${gm.meanRT ? ' · 반응 ' + fmt1(gm.meanRT) + '초' : ''} · ${gm.score.toLocaleString()}점</small></span><span class="lvl">${gm.newLevel > gm.level ? `<em class="up">${gm.level} → ${gm.newLevel}단계</em>` : gm.newLevel < gm.level ? `${gm.level} → ${gm.newLevel}단계` : gm.level + '단계'}</span></div>`).join('') : '<p class="muted">이번에는 게임 기록이 없어요</p>'}</div>
         ${p.missionsDone.length ? `<p class="muted">끝낸 미션 · ${p.missionsDone.map(esc).join(', ')}</p>` : ''}
       </div>`; }).join('');
-    W.innerHTML = `<div class="row between"><div><span class="eyebrow">${dateTxt} · ${modeName} · ${sum.posture === 'seat' ? '앉아서' : '서서'}</span><h2>오늘도 잘 움직였어요</h2></div></div>${head}<div class="${sum.players.length > 1 ? 'grid2' : 'res-one'}">${cards}</div>
+    W.innerHTML = `<div class="row between"><div><span class="eyebrow">${Store.settings.orgName ? esc(Store.settings.orgName) + ' · ' : ''}${dateTxt} · ${modeName} · ${sum.posture === 'seat' ? '앉아서' : '서서'}</span><h2>오늘도 잘 움직였어요</h2></div></div>${head}<div class="${sum.players.length > 1 ? 'grid2' : 'res-one'}">${cards}</div>
       <div class="row"><button class="big gold" id="rsGarden">정원에 씨앗 심기</button><button id="rsAgain">마을 지도로</button><button class="link" id="rsHome">처음으로</button></div>
       <p class="note">게임 기록은 훈련을 돕기 위한 참고값이며 진단 결과가 아니에요.</p>`;
     $('#rsGarden').onclick = () => this.openGarden(sum.players[0].name, sum.players.map(p => p.name));
@@ -650,8 +694,8 @@ function renderGarden(name, names) {
   const st = gardenStage(p.garden.length), next = GSTAGES[st.k + 1];
   const uniqC = [...new Set(p.sessions.flatMap(s => s.games.flatMap(g => g.constellations || [])))];
   W.innerHTML = `
-    <div class="row between"><div><h2>${esc(p.name)} 님의 정원</h2><p class="lead">${st.n}${next ? ` · ${next.min - p.garden.length}그루 더 심으면 '${next.n}'` : ' · 최고 단계에 도착했어요'}</p></div>
-      <div class="row">${names.length > 1 ? `<select id="gdWho" aria-label="정원 주인">${names.map(n => `<option ${n === name ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}<button class="link" id="gdBack">${App.session || App.calibrated ? '마을 지도로' : '처음으로'}</button></div></div>
+    <div class="row between"><div><h2>${esc(maskName(p.name))} 님의 정원</h2><p class="lead">${st.n}${next ? ` · ${next.min - p.garden.length}그루 더 심으면 '${next.n}'` : ' · 최고 단계에 도착했어요'}</p></div>
+      <div class="row">${names.length > 1 ? `<select id="gdWho" aria-label="정원 주인">${names.map(n => `<option value="${esc(n)}" ${n === name ? 'selected' : ''}>${esc(whoFull(n))}</option>`).join('')}</select>` : ''}<button class="link" id="gdBack">${App.session || App.calibrated ? '마을 지도로' : '처음으로'}</button></div></div>
     <div class="panel" style="padding:0;overflow:hidden"><canvas id="gardenCv" style="width:100%;height:min(56vh,520px);display:block;border-radius:22px"></canvas></div>
     <div class="garden-bar">
       <div class="res-tiles" style="flex:1">
@@ -712,11 +756,11 @@ function renderRecords(name) {
   const board = names.map(n => { const pr = Store.profile(n); const a = weekAcc(pr, t0, t0 + 7 * 864e5), b = weekAcc(pr, t0 - 7 * 864e5, t0); return { n, d: a != null && b != null ? a - b : null }; }).filter(x => x.d != null).sort((x, y) => y.d - x.d);
   W.innerHTML = `
     ${App.adminNav('records')}
-    <div class="row"><label class="field" style="flex-direction:row;align-items:center;gap:12px">참여자 <select id="rcWho" aria-label="참여자" style="max-width:320px">${names.map(n => `<option ${n === name ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label></div>
+    <div class="row"><label class="field" style="flex-direction:row;align-items:center;gap:12px">참여자 <select id="rcWho" aria-label="참여자" style="max-width:320px">${names.map(n => `<option value="${esc(n)}" ${n === name ? 'selected' : ''}>${esc(whoFull(n))}</option>`).join('')}</select></label></div>
     <div class="grid2">
       <div class="panel"><h3>이번 주 참여 <span class="chip">${thisWeek}/3회 목표</span></h3><div class="week">${week.map(w => `<span class="${p.days.includes(w.k) ? 'on' : ''} ${w.k === todayKey() ? 'today' : ''}">${w.lab}</span>`).join('')}</div>
         <p class="note">매일이 아니어도 괜찮아요. 일주일에 3번이 목표예요.</p></div>
-      <div class="panel"><h3>향상률 순위 <span class="chip">지난주 대비</span></h3>${board.length ? board.map((b, k) => `<div class="mission"><span>${k + 1}. ${esc(b.n)}</span><b style="color:${b.d >= 0 ? 'var(--gold2)' : 'var(--mute)'}">${b.d >= 0 ? '+' : ''}${Math.round(b.d * 100)}%p</b></div>`).join('') : '<p class="note">두 주 연속 기록이 쌓이면 보여요.</p>'}</div>
+      <div class="panel"><h3>향상률 순위 <span class="chip">지난주 대비</span></h3>${board.length ? board.map((b, k) => `<div class="mission"><span>${k + 1}. ${esc(whoFull(b.n))}</span><b style="color:${b.d >= 0 ? 'var(--gold2)' : 'var(--mute)'}">${b.d >= 0 ? '+' : ''}${Math.round(b.d * 100)}%p</b></div>`).join('') : '<p class="note">두 주 연속 기록이 쌓이면 보여요.</p>'}</div>
     </div>
     <div class="panel"><div class="row between"><h3>변화 추이</h3>
       <div class="opts" id="rcGame">${[['all', '전체']].concat(GAME_ORDER.map(g => [g, GAMES[g].short])).map(([v, l]) => `<button class="opt" data-v="${v}" aria-pressed="${gsel === v}">${l}</button>`).join('')}</div></div>
@@ -726,7 +770,8 @@ function renderRecords(name) {
       <div class="tablebox"><table><thead><tr><th>날짜</th><th>장소</th><th>모드</th><th>단계</th><th>정확도</th><th>반응시간</th><th>기억 길이</th><th>오반응</th><th>무반응</th><th>별</th><th>점수</th></tr></thead><tbody>
       ${rows.slice(0, 60).map(({ s, g }) => `<tr><td>${esc(s.date)}</td><td>${GAMES[g.game].short}</td><td>${{ solo: '혼자', coop: '협동', versus: '대결', relay: '릴레이' }[s.mode]}${s.input === 'mouse' ? '(시연)' : ''}</td><td>${g.level}</td><td>${pct(g.accuracy)}</td><td>${g.meanRT ? fmt1(g.meanRT) + '초' : '–'}</td><td>${g.maxSpan || '–'}</td><td>${g.commission}</td><td>${g.omission}</td><td>${g.stars}</td><td>${g.score.toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="11">기록이 없어요</td></tr>'}
       </tbody></table></div>
-      <p class="note">반응시간·각도는 카메라와 조명에 따라 달라질 수 있어 같은 환경에서 비교하세요. 시연 모드 기록은 '(시연)'으로 표시돼요.</p></div>`;
+      <p class="note">반응시간·각도는 카메라와 조명에 따라 달라질 수 있어 같은 환경에서 비교하세요. 시연 모드 기록은 '(시연)'으로 표시돼요.</p>
+      <p class="note">이 점수는 활동 참여와 변화를 보기 위한 참고 자료예요. 치매 선별·진단 검사를 대신하지 않아요. 내려받는 CSV에도 이름은 가려서(김O호) 생년월과 함께 저장돼요.</p></div>`;
   $('#rcWho').onchange = e => renderRecords(e.target.value);
   App.bindAdminNav();
   $$('#rcGame button').forEach(b => b.onclick = () => { App.recGame = b.dataset.v; renderRecords(name); });
@@ -750,10 +795,10 @@ function drawTrend(cv, ser) {
   line('acc', Ya, PAL.gold2); line('rt', Yr, '#9FD8F2');
 }
 function downloadCSV(names) {
-  const head = ['이름', '날짜', '타임스탬프', '모드', '함께한 사람', '자세', '조작', '장소', '시작단계', '다음단계', '정확도', '평균반응시간(초)', '시도', '정답', '오반응', '무반응', '최대기억길이', '최대콤보', '별', '점수', '수확과일', '완성별자리', '동작일치율', '세션활동시간(초)', '세션동작량', '만세횟수', '스쿼트무릎횟수', '최대팔올림각도'];
+  const head = ['이름(가림)', '생년월', '날짜', '타임스탬프', '모드', '함께한 사람', '자세', '조작', '장소', '시작단계', '다음단계', '정확도', '평균반응시간(초)', '시도', '정답', '오반응', '무반응', '최대기억길이', '최대콤보', '별', '점수', '수확과일', '완성별자리', '동작일치율', '세션활동시간(초)', '세션동작량', '만세횟수', '스쿼트무릎횟수', '최대팔올림각도'];
   const q = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const lines = [head.join(',')];
-  for (const n of names) { const p = Store.profile(n); for (const s of p.sessions) for (const g of s.games) lines.push([n, s.date, s.ts, s.mode, s.partner, s.posture, s.input, GAMES[g.game].name, g.level, g.newLevel, g.accuracy != null ? (g.accuracy * 100).toFixed(1) : '', g.meanRT != null ? g.meanRT.toFixed(3) : '', g.trials, g.correct, g.commission, g.omission, g.maxSpan ?? '', g.maxCombo, g.stars, g.score, g.fruits || 0, (g.constellations || []).length, g.sync != null ? (g.sync * 100).toFixed(0) : '', s.activeSec, s.motion, s.raises, s.squats, s.maxArm].map(q).join(',')); }
+  for (const n of names) { const p = Store.profile(n); for (const s of p.sessions) for (const g of s.games) lines.push([who(n), birthTxt(p.birth), s.date, s.ts, s.mode, s.partner ? who(s.partner) : '', s.posture, s.input, GAMES[g.game].name, g.level, g.newLevel, g.accuracy != null ? (g.accuracy * 100).toFixed(1) : '', g.meanRT != null ? g.meanRT.toFixed(3) : '', g.trials, g.correct, g.commission, g.omission, g.maxSpan ?? '', g.maxCombo, g.stars, g.score, g.fruits || 0, (g.constellations || []).length, g.sync != null ? (g.sync * 100).toFixed(0) : '', s.activeSec, s.motion, s.raises, s.squats, s.maxArm].map(q).join(',')); }
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `브레인무브_기록_${todayKey()}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   toast('CSV 파일을 내려받았어요');
@@ -767,42 +812,45 @@ function renderUsers(msg) {
     <div class="panel"><h3>참여자 등록</h3>
       <div class="grid3" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));align-items:end">
         <label class="field">이름<input type="text" id="uName" maxlength="20" placeholder="예: 김순자" autocomplete="off"></label>
-        <label class="field">메모(호실·특이사항)<input type="text" id="uMemo" maxlength="40" placeholder="예: 302호, 무릎 불편" autocomplete="off"></label>
+        <div class="field">생년월${birthSelect('uB')}</div>
+        <label class="field">메모(반·특이사항)<input type="text" id="uMemo" maxlength="40" placeholder="예: 화요일반, 무릎 불편" autocomplete="off"></label>
         <label class="field">기본 자세<select id="uPost"><option value="stand">서서</option><option value="seat">앉아서</option></select></label>
         <button class="gold" id="uAdd">등록</button>
       </div>
       <p id="uMsg" class="${msg && msg.err ? 'err' : 'okmsg'}">${esc(msg?.text || '')}</p>
-      <p class="note">같은 이름은 한 사람으로 이어져요. 동명이인은 '김순자(302호)'처럼 구분해서 등록해 주세요.</p>
+      <p class="note">이름과 생년월로 한 사람을 구분해요(동명이인도 생년월이 다르면 따로 등록돼요). 게임 화면·결과·기록에는 이름이 김O호처럼 가려서 보여요. 준비 화면의 <b>＋ 새 참여자 등록</b>에서도 바로 등록할 수 있어요.</p>
     </div>
     <div class="panel"><div class="row between"><h3>등록된 참여자 ${names.length}명</h3>
-      <label class="field" style="flex-direction:row;align-items:center;gap:10px;font-weight:500">참여자가 직접 등록하기
-        <select id="uSelf" style="max-width:150px"><option value="false" ${st.selfRegister ? '' : 'selected'}>막기</option><option value="true" ${st.selfRegister ? 'selected' : ''}>허용</option></select></label></div>
-      ${names.length ? `<div class="tablebox"><table><thead><tr><th>이름</th><th>메모</th><th>기본 자세</th><th>등록일</th><th>참여</th><th>최근 참여</th><th></th></tr></thead><tbody>
-      ${names.map(n => { const p = Store.data.profiles[n]; return `<tr data-n="${esc(n)}"><td><b>${esc(n)}</b></td><td>${esc(p.memo || '')}</td><td>${p.defaultPosture === 'seat' ? '앉아서' : '서서'}</td><td>${day(p.registered || p.created)}</td><td>${p.sessions.length}회</td><td>${day(p.sessions.at(-1)?.ts)}</td>
+      <label class="field" style="flex-direction:row;align-items:center;gap:10px;font-weight:500">준비 화면에서 등록
+        <select id="uSelf" style="max-width:220px"><option value="true" ${st.selfRegister ? 'selected' : ''}>바로 등록</option><option value="false" ${st.selfRegister ? '' : 'selected'}>PIN 확인 후 등록</option></select></label></div>
+      ${names.length ? `<div class="tablebox"><table><thead><tr><th>이름</th><th>생년월</th><th>메모</th><th>기본 자세</th><th>등록일</th><th>참여</th><th>최근 참여</th><th></th></tr></thead><tbody>
+      ${names.map(n => { const p = Store.data.profiles[n]; return `<tr data-n="${esc(n)}"><td><b>${esc(who(n))}</b></td><td>${p.birth ? esc(birthTxt(p.birth)) : '<span class="err">미등록</span>'}</td><td>${esc(p.memo || '')}</td><td>${p.defaultPosture === 'seat' ? '앉아서' : '서서'}</td><td>${day(p.registered || p.created)}</td><td>${p.sessions.length}회</td><td>${day(p.sessions.at(-1)?.ts)}</td>
         <td><div class="row" style="gap:8px;flex-wrap:nowrap"><button class="small" data-act="edit">고치기</button><button class="small" data-act="del">지우기</button></div></td></tr>`; }).join('')}
       </tbody></table></div>` : '<p class="muted">아직 없어요. 위에서 첫 참여자를 등록해 주세요.</p>'}
     </div>`;
-  const add = () => { const r = Store.register($('#uName').value, { memo: $('#uMemo').value, posture: $('#uPost').value }); renderUsers(r.ok ? { text: `'${r.name}' 님을 등록했어요` } : { text: r.msg, err: true }); App.bindAdminNav(); if (r.ok) $('#uName').focus(); };
+  const add = () => { const birth = readBirth(W, 'uB'); if (!birth) { $('#uMsg').className = 'err'; $('#uMsg').textContent = '생년월(태어난 해와 달)을 골라 주세요'; return; }
+    const r = Store.register($('#uName').value, { birth, memo: $('#uMemo').value, posture: $('#uPost').value, needBirth: true }); renderUsers(r.ok ? { text: `${whoFull(r.name)} 님을 등록했어요` } : { text: r.msg, err: true }); App.bindAdminNav(); if (r.ok) $('#uName').focus(); };
   $('#uAdd').onclick = add; $('#uName').onkeydown = e => { if (e.key === 'Enter') add(); };
   $('#uSelf').onchange = e => { st.selfRegister = e.target.value === 'true'; Store.save(); toast('저장했어요', 1000); };
   $$('#adminWrap tr[data-n]').forEach(tr => {
     const n = tr.dataset.n, p = Store.data.profiles[n];
     tr.querySelector('[data-act="edit"]').onclick = () => {
-      tr.innerHTML = `<td><input type="text" class="eName" value="${esc(n)}" maxlength="20"></td><td><input type="text" class="eMemo" value="${esc(p.memo || '')}" maxlength="40"></td><td><select class="ePost"><option value="stand">서서</option><option value="seat" ${p.defaultPosture === 'seat' ? 'selected' : ''}>앉아서</option></select></td><td colspan="3"></td>
+      tr.innerHTML = `<td><input type="text" class="eName" value="${esc(Store.realName(n))}" maxlength="20" aria-label="이름(실명)"></td><td>${birthSelect('eB', p.birth)}</td><td><input type="text" class="eMemo" value="${esc(p.memo || '')}" maxlength="40"></td><td><select class="ePost"><option value="stand">서서</option><option value="seat" ${p.defaultPosture === 'seat' ? 'selected' : ''}>앉아서</option></select></td><td colspan="3"></td>
         <td><div class="row" style="gap:8px;flex-wrap:nowrap"><button class="small gold" data-act="save">저장</button><button class="small" data-act="cancel">취소</button></div></td>`;
       tr.querySelector('[data-act="cancel"]').onclick = () => { renderUsers(); App.bindAdminNav(); };
       tr.querySelector('[data-act="save"]').onclick = () => {
-        const nn = tr.querySelector('.eName').value; let r = { ok: true, name: n };
-        if (normName(nn) !== n) r = Store.rename(n, nn);
+        const nn = tr.querySelector('.eName').value, birth = readBirth(tr, 'eB');
+        if (birth === 'bad') { renderUsers({ text: '생년월은 해와 달을 모두 골라 주세요', err: true }); App.bindAdminNav(); return; }
+        const r = Store.rename(n, nn, birth);
         if (!r.ok) { renderUsers({ text: r.msg, err: true }); App.bindAdminNav(); return; }
         const q = Store.data.profiles[r.name]; q.memo = normName(tr.querySelector('.eMemo').value); q.defaultPosture = tr.querySelector('.ePost').value; Store.save();
-        renderUsers({ text: `'${r.name}' 님 정보를 고쳤어요` }); App.bindAdminNav();
+        renderUsers({ text: `${whoFull(r.name)} 님 정보를 고쳤어요` }); App.bindAdminNav();
       };
     };
     tr.querySelector('[data-act="del"]').onclick = () => {
-      tr.innerHTML = `<td colspan="6"><span class="err">'${esc(n)}' 님과 기록·정원을 모두 지울까요? 되돌릴 수 없어요.</span></td><td><div class="row" style="gap:8px;flex-wrap:nowrap"><button class="small danger" data-act="yes">지우기</button><button class="small" data-act="no">취소</button></div></td>`;
+      tr.innerHTML = `<td colspan="7"><span class="err">${esc(whoFull(n))} 님과 기록·정원을 모두 지울까요? 되돌릴 수 없어요.</span></td><td><div class="row" style="gap:8px;flex-wrap:nowrap"><button class="small danger" data-act="yes">지우기</button><button class="small" data-act="no">취소</button></div></td>`;
       tr.querySelector('[data-act="no"]').onclick = () => { renderUsers(); App.bindAdminNav(); };
-      tr.querySelector('[data-act="yes"]').onclick = () => { Store.remove(n); renderUsers({ text: `'${n}' 님을 지웠어요` }); App.bindAdminNav(); };
+      tr.querySelector('[data-act="yes"]').onclick = () => { Store.remove(n); renderUsers({ text: `${whoFull(n)} 님을 지웠어요` }); App.bindAdminNav(); };
     };
   });
 }
@@ -866,13 +914,15 @@ function renderSettings() {
       <div class="panel"><h3>소리 크기</h3>
         <label class="field">효과음 <input type="range" id="stSfx" min="0" max="1" step="0.1" value="${s.volSfx}"></label>
         <label class="field">배경 음악 <input type="range" id="stMus" min="0" max="1" step="0.1" value="${s.volMusic}"></label>
-        <label class="field">음성 <input type="range" id="stVoi" min="0" max="1" step="0.1" value="${s.volVoice}"></label></div>
+        <label class="field">음성 <input type="range" id="stVoi" min="0" max="1" step="0.1" value="${s.volVoice}"></label>
+        <div class="row"><button class="small gold" id="stMusTest">배경 음악 들어 보기</button><span class="note" id="stMusMsg"></span></div></div>
+      <div class="panel"><h3>기관 이름</h3><label class="field">처음 화면과 결과 화면에 보여요<input type="text" id="stOrg" maxlength="30" value="${esc(s.orgName || '')}" placeholder="예: ○○구 치매안심센터" autocomplete="off"></label></div>
       <div class="panel"><h3>카메라 선택</h3><select id="stCam" aria-label="카메라"><option value="">기본 카메라</option></select><p class="note">카메라 이름은 한 번 카메라를 허용한 뒤에 보여요.</p></div>
     </div>
     <div class="panel"><div class="row between"><h3>성우 목소리 다듬기</h3><span class="note" id="tuneVoices"></span></div>
       <p class="note">캐릭터마다 쓸 음성과 높낮이·빠르기를 들어 보며 맞추세요. 소리가 깨지거나 떨리지 않도록 높낮이는 크롬 음성 0.85~1.1배, 윈도우 해미 0.75~1.3배 안에서만 적용돼요. 말 가락(끊어 읽기·늘이기)과 시그니처 효과음은 캐릭터마다 따로 붙어요. <b>Gemini로 녹음한 성우 음성이 있으면 녹음본이 먼저 나오고</b>, 녹음이 없는 문장(사람 이름 등)만 이 설정의 컴퓨터 음성으로 읽어요.</p>
-      <div class="tablebox"><table><thead><tr><th>성우</th><th>음성</th><th>높낮이</th><th>빠르기</th><th></th></tr></thead><tbody>
-      ${Object.entries(PERSONAS).map(([id, P]) => { const T = Narr.tuned(id); return `<tr data-id="${id}"><td><b>${P.name}</b></td>
+      <div class="tablebox"><table><thead><tr><th>성우</th><th>성우 녹음</th><th>음성</th><th>높낮이</th><th>빠르기</th><th></th></tr></thead><tbody>
+      ${Object.entries(PERSONAS).map(([id, P]) => { const T = Narr.tuned(id); const C = (window.VOICE_CLIPS || {})[id] || [], tot = (window.VOICE_TOTAL || {})[id] || 0; return `<tr data-id="${id}"><td><b>${P.name}</b></td><td>${C.length}/${tot}${Narr.ready(id) ? ' ✓' : ' <span class="note">(녹음 중)</span>'}</td>
         <td><select class="tEng" style="min-width:150px"><option value="google" ${T.engine === 'google' ? 'selected' : ''}>크롬 음성</option><option value="ms" ${T.engine === 'ms' ? 'selected' : ''}>윈도우 해미</option></select></td>
         <td><input type="range" class="tPitch" min="0.75" max="1.3" step="0.01" value="${T.pitch}" style="width:140px"> <span class="tPv">${T.pitch.toFixed(2)}</span></td>
         <td><input type="range" class="tRate" min="0.7" max="1.4" step="0.02" value="${T.rate}" style="width:140px"> <span class="tRv">${T.rate.toFixed(2)}</span></td>
@@ -897,7 +947,23 @@ function renderSettings() {
   [['stSfx', 'volSfx'], ['stMus', 'volMusic'], ['stVoi', 'volVoice']].forEach(([id, k]) => $('#' + id).oninput = e => { s[k] = +e.target.value; Store.save(); Sound.applyVolumes(); });
   navigator.mediaDevices?.enumerateDevices?.().then(ds => { const sel = $('#stCam'); ds.filter(d => d.kind === 'videoinput').forEach((d, k) => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || `카메라 ${k + 1}`; if (d.deviceId === s.cameraId) o.selected = true; sel.appendChild(o); }); }).catch(() => { });
   $('#stCam').onchange = e => { s.cameraId = e.target.value; Store.save(); };
+  $('#stOrg').onchange = e => { s.orgName = normName(e.target.value); Store.save(); App.renderOrg(); toast('저장했어요', 1000); };
+  // 배경 음악 확인: 6초 동안 테마곡을 틀어 봄
+  $('#stMusTest').onclick = () => {
+    Sound.init(); Sound.track('title'); Sound.startMusic(100); const m = $('#stMusMsg'); m.textContent = '재생 중…';
+    setTimeout(() => { const el = Sound.el; m.textContent = el && !el.paused ? '음악이 나오고 있어요 ✓' : (Sound.bad.title ? '음악 파일을 찾지 못해 합성 음악으로 틀어요' : '재생이 막혔어요. 화면을 한 번 누른 뒤 다시 눌러 주세요'); }, 1200);
+    setTimeout(() => { if (App.stage == null && !$('#scr-settings').hidden) Sound.stopMusic(); }, 6000);
+  };
   App.bindAdminNav();
 }
 
 window.addEventListener('DOMContentLoaded', () => App.init());
+
+/* ================= 생년월 고르기(등록 화면 공용) ================= */
+function birthSelect(cls, val) {
+  const [y, m] = String(val || '').split('-'), ny = new Date().getFullYear(), ys = [];
+  for (let k = ny - 40; k >= 1920; k--) ys.push(k);
+  return `<span class="birth"><select class="${cls}Y" aria-label="태어난 해"><option value="">연도</option>${ys.map(k => `<option value="${k}" ${+y === k ? 'selected' : ''}>${k}년</option>`).join('')}</select><select class="${cls}M" aria-label="태어난 달"><option value="">달</option>${Array.from({ length: 12 }, (_, k) => `<option value="${String(k + 1).padStart(2, '0')}" ${+m === k + 1 ? 'selected' : ''}>${k + 1}월</option>`).join('')}</select></span>`;
+}
+// '1948-03' / 아무것도 안 고르면 '' / 하나만 고르면 'bad'
+function readBirth(root, cls) { const y = root.querySelector('.' + cls + 'Y')?.value, m = root.querySelector('.' + cls + 'M')?.value; return y && m ? y + '-' + m : (y || m ? 'bad' : ''); }

@@ -149,7 +149,11 @@ const Stinger = {
 
 const Narr = {
   caption: null, lastFlavor: 0, who: '', timer: null,
-  get id() { return PERSONAS[Store.settings.narrator] ? Store.settings.narrator : 'basic'; },
+  // 고른 캐릭터의 성우 녹음이 아직 덜 됐으면 녹음이 끝난 '무브 선생님'으로 안내(컴퓨터 음성으로 바뀌지 않게)
+  get id() { const s = Store.settings.narrator; return PERSONAS[s] && this.usable(s) ? s : 'basic'; },
+  coverage(id) { const C = window.VOICE_CLIPS && window.VOICE_CLIPS[id], total = (window.VOICE_TOTAL || {})[id]; if (!C || !C.length) return 0; return total ? Math.min(1, C.length / total) : 1; },
+  ready(id) { return this.coverage(id) >= 0.9; },
+  usable(id) { return this.ready(id) || !this.recorded || !this.ready('basic'); },
   get P() { return this.tuned(this.id); },
   // 관리자 설정에서 다듬은 음성·음높이·빠르기를 덮어씀 (음높이는 음성별 안전 범위로)
   tuned(id) {
@@ -166,13 +170,16 @@ const Narr = {
   // ---- 녹음된 성우 음성(Gemini TTS로 미리 녹음, assets/voice/<캐릭터>/<열쇠>.mp3) ----
   audio: null, sets: {},
   vkey(p, text) { let h = 0x811c9dc5; const s = p + '|' + String(text).replace(/\s+/g, ' ').trim(); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); },
-  clipUrl(id, text) {
+  clipUrl(id, text, any) {
     const C = window.VOICE_CLIPS && window.VOICE_CLIPS[id]; if (!C || !C.length || !text) return null;
-    // 녹음이 대부분(90% 이상) 끝난 캐릭터만 녹음 음성을 씀 → 녹음 음성과 컴퓨터 음성이 번갈아 나오지 않게
-    const total = (window.VOICE_TOTAL || {})[id]; if (total && C.length < total * 0.9) return null;
+    // 녹음이 대부분(90% 이상) 끝난 캐릭터만 녹음 음성을 씀 → 녹음 음성과 컴퓨터 음성이 번갈아 나오지 않게(맛보기 소리는 예외)
+    if (!any && !this.ready(id)) { this.miss(id, text, 'gate'); return null; }
     const set = this.sets[id] || (this.sets[id] = new Set(C)), k = this.vkey(id, text);
-    return set.has(k) ? 'assets/voice/' + id + '/' + k + '.mp3' : null;
+    if (set.has(k)) return 'assets/voice/' + id + '/' + k + '.mp3';
+    this.miss(id, text, 'none'); return null;
   },
+  // 녹음이 없어 컴퓨터 음성으로 말한 문장(점검용): 콘솔에서 Narr.misses 로 확인
+  misses: [], miss(id, text, why) { if (this.misses.length < 200) this.misses.push({ id, text, why }); },
   get recorded() { const C = window.VOICE_CLIPS; return !!C && Object.values(C).some(a => a && a.length); },
   playClip(url, fallback) {
     this.stopClip(); const s = Store.settings; if (!s.voice) return;
@@ -244,7 +251,7 @@ const Narr = {
   sample(id, text) {
     this.cancel(); Voice.stop(true); const P = this.tuned(id); Sound.init();
     const lead = Stinger.play(P.id, 'full');
-    const t = text || P.sample, url = this.clipUrl(P.id, t), tts = () => this.utter(t, P, true);
+    const t = text || P.sample, url = this.clipUrl(P.id, t, true), tts = () => this.utter(t, P, true);
     this.timer = setTimeout(() => { this.timer = null; if (url) this.playClip(url, tts); else tts(); }, lead * 1000);
   },
 
