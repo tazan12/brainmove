@@ -8,7 +8,8 @@ avatar = (src / 'avatar.js').read_text()
 THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.0/'
 TB = pathlib.Path('/tmp/claude-0/-home-claude/a134767e-3aaa-5c51-a6d3-cd2cdcf0d1bd/scratchpad/tb/node_modules/three/')
 
-import json, collections
+import json, collections, time
+BUILD_ID = time.strftime('%Y%m%d%H%M')  # 사이트에서 성우 목록(index.js)이 옛 캐시로 남지 않게
 _man = json.loads(pathlib.Path('voicegen/manifest.json').read_text())
 VOICE_TOTAL = json.dumps(dict(collections.Counter(i['persona'] for i in _man['items'])))
 
@@ -22,7 +23,7 @@ def page(three_base, avatar_src, dance_src=''):
 <script type="importmap">{{"imports":{{"three":"{three_base}build/three.module.js","three/addons/":"{three_base}examples/jsm/"}}}}</script>
 </head>
 <body>
-{(src / 'body.html').read_text()}
+{(src / 'body.html').read_text().replace('assets/voice/index.js"', 'assets/voice/index.js?v=' + BUILD_ID + '"')}
 <script>window.AVATAR_SRC = "{avatar_src}"; window.AVATAR_DANCE_SRC = "{dance_src}"; window.VOICE_TOTAL = {VOICE_TOTAL};</script>
 <script type="module">
 {avatar}
