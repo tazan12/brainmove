@@ -89,8 +89,8 @@ const App = {
   renderVoices() {
     const cur = Narr.id;
     // 성우 녹음 상태를 카드에 표시: 녹음이 끝난 캐릭터만 고를 수 있음(덜 된 캐릭터는 '녹음 중 NN%')
-    const badge = id => !Narr.recorded ? '' : Narr.ready(id) ? '<span class="vrec ok">성우 녹음</span>' : `<span class="vrec">녹음 중 ${Math.round(Narr.coverage(id) * 100)}%</span>`;
-    $('#voiceList').innerHTML = Object.entries(PERSONAS).map(([id, P]) => `<button class="opt voice${Narr.usable(id) ? '' : ' wait'}" data-v="${id}" aria-pressed="${id === cur}" style="--pc:${P.color};--pink:${P.ink}"><span class="vhead"><span class="vseal">${P.seal}</span>${P.name}${badge(id)}</span><small>${P.desc}</small><small class="say">"${esc(P.sample)}"</small></button>`).join('');
+    const badge = id => !Narr.recorded ? '' : Narr.ready(id) ? '<span class="vrec ok">성우 녹음 완료</span>' : `<span class="vrec">성우 녹음 중 ${Math.round(Narr.coverage(id) * 100)}%</span>`;
+    $('#voiceList').innerHTML = Object.entries(PERSONAS).map(([id, P]) => `<button class="opt voice${Narr.usable(id) ? '' : ' wait'}" data-v="${id}" aria-pressed="${id === cur}" style="--pc:${P.color};--pink:${P.ink}"><span class="vhead"><span class="vseal">${P.seal}</span><span class="vname">${P.name}</span></span>${badge(id)}<small>${P.desc}</small><small class="say">"${esc(P.sample)}"</small></button>`).join('');
     $$('#voiceList .voice').forEach(b => b.onclick = () => {
       Sound.init(); const id = b.dataset.v;
       if (!Narr.usable(id)) { toast(`'${PERSONAS[id].name}' 목소리는 아직 성우 녹음 중이에요. 녹음이 끝나면 고를 수 있어요`); Narr.sample(id); return; }
@@ -159,7 +159,7 @@ const App = {
         : `<div class="seat empty"><span class="role"${rc}>${role(i)}</span><span class="ava">?</span><div class="ph"><b>아래에서 이름을 눌러 주세요</b></div></div>`; }).join('');
     $$('#loginSlots [data-unpick]').forEach(b => b.onclick = () => this.pick(b.dataset.unpick));
     $('#whoGrid').innerHTML = shown.map(n => { const p = Store.data.profiles[n], i = S.picked.indexOf(n);
-      return `<button class="who" data-n="${esc(n)}" aria-pressed="${i >= 0}">${i >= 0 ? `<span class="tick" ${S.n === 2 ? `style="background:${PCOL[i]}"` : ''}>${S.n === 2 ? i + 1 + 'P' : '✓'}</span>` : ''}${ava(n)}<span class="nm">${esc(who(n))}<small>${esc(bt(p))}${esc(p.memo ? p.memo + ' · ' : '')}${when(p)}</small></span></button>`; }).join('');
+      return `<button class="who" data-n="${esc(n)}" aria-pressed="${i >= 0}">${i >= 0 ? `<span class="tick" ${S.n === 2 ? `style="background:${PCOL[i]}"` : ''}>${S.n === 2 ? i + 1 + 'P' : '✓'}</span>` : ''}${ava(n)}<span class="nm">${esc(who(n))}<small>${p.birth ? esc(birthTxt(p.birth)) + '년생' : '생년월 미등록'}</small><small>${esc(p.memo ? p.memo + ' · ' : '')}${when(p)}</small></span></button>`; }).join('');
     $$('#whoGrid .who').forEach(b => b.onclick = () => this.pick(b.dataset.n));
     const msg = $('#loginMsg');
     if (!names.length) msg.innerHTML = `<p class="muted">아직 등록된 참여자가 없어요. 위의 <b>＋ 새 참여자 등록</b>을 눌러 이름과 생년월을 등록해 주세요.</p>`;

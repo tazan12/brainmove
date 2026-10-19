@@ -658,7 +658,7 @@ class RestStage {
     Sound.setTempo(80); setTimeout(() => window.Avatar?.celebrate?.('main', this.duration), 0);
     const two = this.ctx.players.length === 2;
     Narr.say('rest', { next: this.next }); if (two) setTimeout(() => Narr.flavor('highfive'), 4500);
-    const W = View.W, H = View.H; HandButtons.set([{ label: '바로 계속하기', x: W / 2 - 180, y: H - 150, w: 360, h: 90, on: () => this.done = true }]);
+    const W = View.W, H = View.H; HandButtons.set([{ label: '바로 계속하기', x: W / 2 - 180, y: H - 200, w: 360, h: 90, on: () => this.done = true }]);
   }
   update(dt) {
     this.t += dt;

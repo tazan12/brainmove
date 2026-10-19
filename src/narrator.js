@@ -262,10 +262,16 @@ const Narr = {
     // 화면 아래 안내 줄 자리에 띄움. 댄스(동작 칸)·쉬는 시간(버튼)·몸 인식(진행 막대)에서는 겹쳐서 띄우지 않음
     const st = App.stage; if (!st || st.id === 'dance' || st.kind === 'rest' || st.kind === 'calib') return;
     const P = this.tuned(c.id || this.id), W = View.W, H = View.H, a = clamp(Math.min(age / 0.15, (3.6 - age) / 0.4), 0, 1);
-    g.save(); g.font = `600 22px ${SANS}`;
-    const tw = Math.min(W - 440 - 200, g.measureText(c.text).width), bw = tw + 200, bh = 56;
-    if (tw < 120) { g.restore(); return; }
-    let bx = W / 2 - bw / 2, by = H - 154, sx = 1, sy = 1, rot = 0, clipW = bw;
+    g.save();
+    // 글자 폭을 재서 배치: [도장][이름] | 문장(길면 낱말 단위로 두 줄, 줄마다 왼쪽 맞춤)
+    g.font = `700 17px ${SANS}`; const nameW = g.measureText(P.name).width;
+    g.font = `600 22px ${SANS}`; const full = g.measureText(c.text).width, maxW = Math.max(200, Math.min(W - 520, 860));
+    let lines = [c.text];
+    if (full > maxW) { const ws = c.text.split(' '); let best = null; for (let k = 1; k < ws.length; k++) { const l1 = ws.slice(0, k).join(' '), l2 = ws.slice(k).join(' '), m = Math.max(g.measureText(l1).width, g.measureText(l2).width); if (!best || m < best.m) best = { m, l: [l1, l2] }; } if (best) lines = best.l; }
+    const tw = Math.min(maxW, Math.max(...lines.map(l => g.measureText(l).width))), tx = 58 + nameW + 30;
+    const bw = tx + tw + 30, bh = lines.length > 1 ? 88 : 56;
+    if (tw < 60) { g.restore(); return; }
+    let bx = W / 2 - bw / 2, by = H - 98 - bh, sx = 1, sy = 1, rot = 0, clipW = bw;
     const e = clamp(age / 0.45, 0, 1);
     if (P.anim === 'bounce') by -= Math.abs(Math.sin(age * 9)) * 26 * Math.exp(-age * 2.6);                       // 통통 튀며 등장
     else if (P.anim === 'scroll') clipW = bw * (1 - Math.pow(1 - clamp(age / 0.7, 0, 1), 3));                     // 두루마리 펼치듯
@@ -283,7 +289,10 @@ const Narr = {
     g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5; g.beginPath(); g.arc(30, bh / 2, 17, 0, 7); g.stroke();
     plainText(g, P.seal, 30, bh / 2 + 1, 21, P.ink, 'center', 800, SERIF);
     plainText(g, P.name, 58, bh / 2, 17, P.color, 'left', 700);
-    g.save(); g.beginPath(); g.rect(178, 0, tw + 14, bh); g.clip(); plainText(g, c.text, 182, bh / 2, 22, PAL.ivory, 'left', 600); g.restore();
+    g.strokeStyle = 'rgba(244,236,221,.22)'; g.lineWidth = 1; g.beginPath(); g.moveTo(tx - 15, 14); g.lineTo(tx - 15, bh - 14); g.stroke();
+    g.save(); g.beginPath(); g.rect(tx - 2, 0, tw + 8, bh); g.clip();
+    lines.forEach((l, k) => plainText(g, l, tx, lines.length > 1 ? bh / 2 + (k ? 15 : -15) : bh / 2, 22, PAL.ivory, 'left', 600));
+    g.restore();
     g.restore();
   }
 };
