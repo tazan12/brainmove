@@ -108,7 +108,7 @@
           <div class="places" id="placeList"></div>
         </div>
         <aside class="panel course-side">
-          <div><h3>내 코스</h3><p class="note">아침 체조 → 고른 곳 → 노을 스트레칭</p></div>
+          <div><h3>내 코스</h3><p class="note" id="courseFlow">아침 체조 → 고른 곳 → 노을 스트레칭</p></div>
           <ol class="course-list" id="courseList"></ol>
           <button class="gold big" id="btnCourse">코스 시작</button>
           <button id="btnQuick" disabled>한 곳만 한 판</button>
@@ -128,6 +128,7 @@
 
   <div id="hud" hidden>
     <button id="pauseBtn">잠깐 멈춤</button>
+    <button id="skipBtn" hidden>체조 건너뛰기 ▶</button>
     <button id="stopBtn">그만</button>
   </div>
   <div id="frame"></div>

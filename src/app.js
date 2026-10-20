@@ -21,6 +21,7 @@ const App = {
     $('#btnRecal').onclick = () => this.runCalibration(true);
     $('#stopBtn').onclick = () => this.askStop();
     $('#pauseBtn').onclick = () => this.togglePause();
+    $('#skipBtn').onclick = () => this.skipWarmup();
     addEventListener('keydown', e => this.onKey(e, true));
     // 첫 클릭·터치·키 입력 때 소리 장치를 깨우고, 막혀 있던 배경음악을 다시 틀어 줌
     const wake = () => { Sound.init(); Sound.resume(); };
@@ -35,7 +36,7 @@ const App = {
   show(name) {
     $$('.screen').forEach(s => s.hidden = s.id !== 'scr-' + name);
     const play = name === 'play';
-    $('#game').hidden = !play; $('#hud').hidden = !play;
+    $('#game').hidden = !play; $('#hud').hidden = !play; $('#skipBtn').hidden = true;
     $('#backdrop').hidden = play; $('#veil').hidden = play;
     $('#backdrop').classList.toggle('dim', name !== 'title'); $('#veil').classList.toggle('title', name === 'title');
     if (!play) { $('#overlay').hidden = true; }
@@ -335,6 +336,7 @@ const App = {
     // 내 코스
     $('#courseList').innerHTML = Array.from({ length: max }, (_, k) => { const id = this.course[k]; return id ? `<li><span class="n">${k + 1}</span><span class="th" style="background-image:url('${ASSETS[GAMES[id].img]}')"></span><span class="nm">${GAMES[id].short}</span><button class="x" data-rm="${id}" aria-label="${GAMES[id].short} 빼기">✕</button></li>` : `<li class="empty">${k + 1}. 위에서 코스를 고르거나 장소를 눌러요</li>`; }).join('');
     $$('#courseList [data-rm]').forEach(b => b.onclick = () => { this.course.splice(this.course.indexOf(b.dataset.rm), 1); this.renderMap(); });
+    $('#courseFlow').textContent = (Store.settings.warmupSec > 0 ? '아침 체조 → ' : '') + '고른 곳 → 노을 스트레칭';
     $('#btnCourse').disabled = !this.course.length; $('#btnQuick').disabled = !this.course.length;
     $('#btnCourse').textContent = this.course.length ? `코스 시작 · ${this.course.length}곳` : '코스 시작';
     $('#btnQuick').textContent = this.course.length ? `${GAMES[this.course[0]].short}만 한 판` : '한 곳만 한 판';
@@ -352,7 +354,7 @@ const App = {
     applyPosture(S.posture); Narr.who = n === 1 ? who(names[0]) + ' 님' : '두 분';
     const games = quick ? [this.course[0]] : this.course.slice();
     const stages = [];
-    if (!quick) stages.push({ kind: 'warmup' });
+    if (!quick && Store.settings.warmupSec > 0) stages.push({ kind: 'warmup' });   // 관리자 설정에서 '안 함'이면 바로 게임
     games.forEach((g, k) => { if (k > 0) stages.push({ kind: 'rest', next: g, relay: mode === 'relay' ? k % 2 : null }); stages.push({ kind: 'game', id: g, relay: mode === 'relay' ? k % 2 : null }); });
     if (!quick) stages.push({ kind: 'cooldown' });
     Pose.players.forEach(P => { P.motion = 0; P.raises = 0; P.squats = 0; P.maxArm = 0; });
@@ -380,6 +382,7 @@ const App = {
       this.stage = new GAME_CLASS[st.id](ctx);
       if (se.mode === 'relay') FX.showBanner(`${st.relay + 1}P 차례!`, PCOL[st.relay], GAMES[st.id].name, 2);
     }
+    $('#skipBtn').hidden = st.kind !== 'warmup';
     Sound.track(st.kind === 'game' ? (st.id === 'dance' ? 'dance' : 'game') : st.kind === 'rest' ? 'title' : st.kind);
     Sound.startMusic(Sound.tempo || 100);   // 리듬 게임처럼 음악을 멈췄던 단계 다음에도 다시 흐르게
     this.stage.start();
@@ -456,6 +459,11 @@ const App = {
   },
 
   /* ---------- 멈춤·그만 ---------- */
+  // 아침 체조 건너뛰기(진행자가 누름): 체조를 끝내고 첫 게임으로
+  skipWarmup() {
+    const st = this.stage; if (!st || st.kind !== 'warmup' || this.paused) return;
+    $('#skipBtn').hidden = true; Narr.cancel(); Voice.stop(); Sound.coin(); toast('아침 체조를 건너뛰었어요', 1400); st.done = true;
+  },
   togglePause(force) {
     if (!this.stage) return;
     if (this.paused && force !== true) { this.paused = false; $('#overlay').hidden = true; Sound.startMusic(100); return; }
@@ -909,7 +917,7 @@ function renderSettings() {
       ${seg('stRate', '말하기 속도', [[0.8, '느리게'], [0.95, '보통'], [1.1, '빠르게']], s.voiceRate)}
       ${seg('stShapes', '색각 배려(풍선에 모양 표시)', [['true', '켜기'], ['false', '끄기']], s.shapes)}
       ${seg('stSkel', '몸 위 빛 뼈대', [['true', '보이기'], ['false', '숨기기']], s.skeleton)}
-      ${seg('stWarm', '아침 체조 길이', [[50, '짧게'], [90, '보통'], [120, '길게']], s.warmupSec)}
+      ${seg('stWarm', '아침 체조 길이', [[0, '안 함'], [50, '짧게'], [90, '보통'], [120, '길게']], s.warmupSec, '안 함을 고르면 코스가 바로 첫 게임부터 시작해요. 체조 중에는 오른쪽 위 \'체조 건너뛰기\' 버튼으로 넘어갈 수 있어요.')}
       ${seg('stUnlock', '마을 장소 열기', [['false', '정원이 자라면 하나씩'], ['true', '처음부터 모두']], s.unlockAll, '처음에는 두 곳만 열리고, 씨앗을 심어 정원이 자라면 새 장소가 열려요.')}
       ${seg('stModel', '인식 정확도', [['lite', '가벼움(권장)'], ['full', '정밀']], s.model, '정밀은 느린 컴퓨터에서 끊길 수 있어요. 바꾸면 다음 시작부터 적용돼요.')}
       <div class="panel"><h3>소리 크기</h3>
