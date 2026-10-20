@@ -548,51 +548,153 @@ class OxGame extends BaseGame {
   drawGuide(g) { }
 }
 
-/* ---------- ⑤ 과수원 수확 (Go/No-Go) ---------- */
+/* ---------- ⑤ 과수원 수확 (Go/No-Go) ----------
+   과일(얼굴 있는 사과·배·복숭아·귤·감·포도)은 손으로 따고, 벌은 손을 내리고 참아요.
+   재미 요소: 바구니 채우기(10개마다 보너스) · 주문 받기 · 과일 소나기 · 벌떼 지나가기 · 꿀단지 선물 · 황금 사과
+   기록(정확도·오반응·무반응·반응시간)은 그대로: 과일·꿀단지 = 따야 할 것, 벌 = 참아야 할 것 */
+const ORCH_KINDS = ['apple', 'pear', 'peach', 'orange', 'persimmon', 'grape'];
 class OrchardGame extends BaseGame {
-  constructor(ctx) { super('orchard', ctx); this.bossText = '황금 사과 나무!'; this.st = this.ps.map(() => ({ items: [], next: 1 })); }
-  params(i) { const lv = this.lv(i); let iv = Math.max(0.6, 1.7 - lv * 0.1), life = Math.max(1.25, 3.1 - lv * 0.18); if (this.bossOn) iv /= 1.3; if (this.ps[i].fever > 0) iv /= 1.6; return { iv, life, bee: Math.min(0.45, 0.18 + lv * 0.025), gold: this.bossOn ? 0.2 : 0.04 }; }
-  spawn(i) {
-    const p = this.params(i), A = this.areaFor(i), S = this.st[i]; if (S.items.length >= 4) return;
-    const r = clamp(Math.min(A.w, A.h) * 0.075, 38, 62); let x, y, c = 0;
-    do { x = rand(A.x + r, A.x + A.w - r); y = rand(A.y + r, A.y + A.h - r); c++; } while (c < 40 && S.items.some(it => Math.hypot(it.x - x, it.y - y) < r * 3));
-    const roll = Math.random(); const kind = roll < p.bee ? 'bee' : roll < p.bee + p.gold ? 'gold' : 'fruit';
-    S.items.push({ kind, fk: pick(['apple', 'pear', 'grape', 'orange', 'peach']), x, y, r, born: this.t, life: p.life * (kind === 'bee' ? 1.1 : 1), dw: 0 });
+  constructor(ctx) {
+    super('orchard', ctx); this.bossText = '황금 사과 나무!';
+    this.st = this.ps.map(() => ({ items: [], next: 1, bag: [], baskets: 0, fly: [], drops: [], gone: [], calm: 0, order: null, orderT: 0, bump: 0 }));
+    this.ev = null; this.nextEv = Math.min(22, this.duration * 0.22); this.evN = 0;
+    this.st.forEach(S => this.newOrder(S));
+  }
+  newOrder(S, avoid) { const k = pick(ORCH_KINDS.filter(x => x !== avoid)); S.order = { k, need: randi(2, 3), got: 0 }; }
+  basketPos(i) { const W = View.W, H = View.H, two = this.split; return { x: two ? (i ? W * 0.9 : W * 0.1) : W * 0.1, y: H - 205, w: Math.min(150, W * 0.11) }; }
+  params(i) {
+    const lv = this.lv(i); let iv = Math.max(0.6, 1.7 - lv * 0.1), life = Math.max(1.25, 3.1 - lv * 0.18), bee = Math.min(0.45, 0.18 + lv * 0.025), max = 4;
+    if (this.bossOn) iv /= 1.3; if (this.ps[i].fever > 0) iv /= 1.6;
+    if (this.ev && this.ev.kind === 'shower') { iv = 0.34; bee = 0; max = 6; life = Math.max(life, 2.4); }
+    return { iv, life, bee, max, gold: this.bossOn ? 0.2 : 0.04 };
+  }
+  spawn(i, force) {
+    const p = this.params(i), A = this.areaFor(i), S = this.st[i]; if (S.items.length >= p.max + (force ? 1 : 0)) return false;
+    const r = clamp(Math.min(A.w, A.h) * 0.09, 46, 72); let x, y, c = 0;
+    do { x = rand(A.x + r, A.x + A.w - r); y = rand(A.y + r * 1.3, A.y + A.h - r); c++; } while (c < 40 && S.items.some(it => Math.hypot(it.x - x, it.y - y) < r * 3));
+    const roll = Math.random(); const kind = force || (roll < p.bee ? 'bee' : roll < p.bee + p.gold ? 'gold' : 'fruit');
+    // 주문 받은 과일이 조금 더 자주 나오게
+    const fk = S.order && Math.random() < 0.4 ? S.order.k : pick(ORCH_KINDS);
+    S.items.push({ kind, fk, x, y, r, born: this.t, life: p.life * (kind === 'bee' ? 1.1 : kind === 'honey' ? 1.6 : 1), dw: 0, seed: Math.random() * 10, dir: 1 });
+    return true;
+  }
+  // 벌떼: 화면 옆에서 줄지어 날아와 반대편으로 지나감(모두 참으면 보너스)
+  swarm(i) {
+    const A = this.areaFor(i), S = this.st[i], n = this.lv(i) >= 5 ? 4 : 3, r = clamp(Math.min(A.w, A.h) * 0.07, 36, 56), fromL = Math.random() < 0.5;
+    for (let k = 0; k < n; k++) S.items.push({ kind: 'bee', swarm: true, x: fromL ? A.x - r * 2 - k * r * 3.2 : A.x + A.w + r * 2 + k * r * 3.2, y: A.y + A.h * (0.25 + 0.5 * ((k * 0.37) % 1)), r, born: this.t, life: 99, dw: 0, seed: k * 3, dir: fromL ? 1 : -1, vx: (fromL ? 1 : -1) * Math.max(160, A.w / 3.2), A });
+  }
+  startEvent() {
+    const kind = this.evN % 2 === 0 ? 'shower' : 'swarm'; this.evN++;
+    this.ev = { kind, t0: this.t, dur: kind === 'shower' ? 6 : 5.5, touched: false };
+    if (kind === 'shower') { FX.showBanner('과일 소나기!', '#FFB35C', '나무를 흔들었어요 · 마구 따요!', 1.8); Sound.cheer(); FX.rain(['#E0393B', '#F38B23', '#E8C85A', '#6CC79F'], 30); }
+    else { FX.showBanner('벌떼가 지나가요!', '#E2604F', '손을 내리고 꾹 참아요', 1.8); Sound.noise(0.6, 0.1, 300, 0, 2); this.activeIdx().forEach(i => { this.st[i].items = this.st[i].items.filter(it => it.kind === 'bee'); this.swarm(i); }); }
+  }
+  endEvent() {
+    const E = this.ev; this.ev = null; this.nextEv = this.t + 26;
+    if (E.kind === 'swarm' && !E.touched) this.activeIdx().forEach(i => { const ps = this.ps[i], b = 200 * (ps.fever > 0 ? 2 : 1); ps.score += b; if (this.coop) this.addTeam(b); const B = this.basketPos(i); FX.text(`꾹 참기 성공! +${b}`, this.split ? B.x : View.W / 2, View.H * 0.32, COLORS.leaf, 46, 1.6); });
+    if (E.kind === 'swarm' && !E.touched) Sound.fanfare();
+  }
+  harvest(i, it, age) {
+    const S = this.st[i], k = it.kind === 'gold' ? 'gold' : it.kind === 'honey' ? 'honey' : it.fk, F = FRUITS[k];
+    const base = it.kind === 'gold' ? 300 : it.kind === 'honey' ? 200 : 100;
+    this.correct(i, it.x, it.y, age, { base }); this.ps[i].fruits++;
+    const col = k === 'honey' ? '#FFC93A' : F.c; FX.burst(it.x, it.y, [col, shade(col, 0.4), '#fff'], 14, 'petal', 0.7);
+    if (k === 'gold') { FX.text('황금 사과!', it.x, it.y - 90, PAL.gold2, 50); Sound.coin(); }
+    else if (k === 'honey') { FX.text('달콤한 꿀!', it.x, it.y - 90, '#FFC93A', 46); Sound.harp(); }
+    else FX.text(F.n + '!', it.x, it.y + it.r + 18, shade(col, 0.35), 30, 0.9);
+    if (k !== 'honey') S.fly.push({ k: k === 'gold' ? 'gold' : it.fk, x0: it.x, y0: it.y, r: it.r, t0: this.t });
+    // 주문
+    const O = S.order; if (O && it.fk === O.k && it.kind === 'fruit') { O.got++; if (O.got >= O.need) { const b = 200 * (this.ps[i].fever > 0 ? 2 : 1); this.ps[i].score += b; if (this.coop) this.addTeam(b); const B = this.basketPos(i); FX.text(`주문 완료! +${b}`, B.x + (this.split && i ? -40 : 60), B.y - 150, PAL.gold2, 40, 1.5); Sound.coin(); S.order = null; S.orderT = this.t + 1.2; S.lastOrder = O.k; } }
   }
   step(dt) {
+    // 이벤트(과일 소나기 · 벌떼) — 보스 라운드 앞뒤로는 쉬어 감
+    if (!this.ev && !this.bossOn && this.t >= this.nextEv && this.timeLeft() > this.bossSec + 8) this.startEvent();
+    if (this.ev && this.t - this.ev.t0 >= this.ev.dur && !(this.ev.kind === 'swarm' && this.activeIdx().some(i => this.st[i].items.some(it => it.swarm)))) this.endEvent();
     this.activeIdx().forEach(i => {
-      const S = this.st[i]; S.next -= dt; if (S.next <= 0) { this.spawn(i); S.next = this.params(i).iv * rand(0.8, 1.2); }
+      const S = this.st[i];
+      if (!S.order && this.t >= S.orderT) this.newOrder(S, S.lastOrder);
+      const swarmOn = this.ev && this.ev.kind === 'swarm';
+      S.next -= dt; if (S.next <= 0) { if (!swarmOn) this.spawn(i); S.next = this.params(i).iv * rand(0.8, 1.2); }
       for (const it of S.items) {
         const age = this.t - it.born;
-        if (it.kind === 'bee') { it.x += Math.sin(this.t * 3 + it.born) * 40 * dt; it.y += Math.cos(this.t * 2.3 + it.born) * 25 * dt; }
-        const H = age > 0.15 ? this.handOver(i, it.x, it.y, it.r * 1.15) : null;
+        if (it.kind === 'bee') {
+          if (it.swarm) { it.x += it.vx * dt; it.y += Math.sin(this.t * 4 + it.seed) * 30 * dt; }
+          else { const vx = Math.cos(this.t * 3 + it.born) * 120; it.x += Math.sin(this.t * 3 + it.born) * 40 * dt; it.y += Math.cos(this.t * 2.3 + it.born) * 25 * dt; it.dir = vx >= 0 ? 1 : -1; }
+          it.near = !!this.handOver(i, it.x, it.y, it.r * 2.4);
+        } else it.near = !!this.handOver(i, it.x, it.y, it.r * 2.2);
+        const inside = !it.swarm || (it.x > it.A.x - it.r && it.x < it.A.x + it.A.w + it.r);
+        const H = age > 0.15 && inside ? this.handOver(i, it.x, it.y, it.r * 1.15) : null;
         if (H) { it.dw += dt; } else it.dw = 0;
         if (it.dw >= 0.12) {
           it.dead = true;
-          if (it.kind === 'bee') { this.wrong(i, it.x, it.y, 'commission', '앗, 벌이에요!'); FX.doShake(8); Sound.noise(0.3, 0.15, 400, 0, 3); }
-          else { const gold = it.kind === 'gold'; this.correct(i, it.x, it.y, age, { base: gold ? 300 : 100 }); this.ps[i].fruits++; if (gold) { FX.text('황금 사과!', it.x, it.y - 90, PAL.gold2, 50); Sound.coin(); } }
-        } else if (age > it.life) {
+          if (it.kind === 'bee') {
+            this.wrong(i, it.x, it.y, 'commission', '앗, 따끔! 벌이에요'); FX.doShake(8); Sound.noise(0.3, 0.15, 400, 0, 3); S.calm = 0; if (this.ev) this.ev.touched = true;
+            S.gone.push({ x: it.x, y: it.y, r: it.r, dir: it.dir, t0: this.t, angry: true, seed: it.seed });
+          } else this.harvest(i, it, age);
+        } else if (it.swarm ? (it.vx > 0 ? it.x > it.A.x + it.A.w + it.r * 2 : it.x < it.A.x - it.r * 2) : age > it.life) {
           it.dead = true;
-          if (it.kind === 'bee') { this.ps[i].trials++; this.ps[i].correct++; this.ps[i].score += 50; if (this.coop) this.addTeam(50); if (Math.random() < 0.35) FX.text('잘 참았어요', it.x, it.y, COLORS.leaf, 34); }
-          else if (it.kind === 'fruit') { this.ps[i].trials++; this.ps[i].omission++; this.ps[i].combo = 0; }
+          if (it.kind === 'bee') {
+            this.ps[i].trials++; this.ps[i].correct++; this.ps[i].score += 50; if (this.coop) this.addTeam(50);
+            if (!it.swarm) { S.gone.push({ x: it.x, y: it.y, r: it.r, dir: it.dir, t0: this.t, seed: it.seed }); if (Math.random() < 0.35) FX.text('잘 참았어요', it.x, it.y, COLORS.leaf, 34); }
+            // 벌을 세 번 잘 참으면 꿀단지 선물
+            if (++S.calm >= 3 && this.spawn(i, 'honey')) { S.calm = 0; FX.text('벌이 꿀단지를 두고 갔어요', View.W / 2, View.H * 0.28, '#FFC93A', 34, 1.6); }
+          } else if (it.kind === 'fruit' || it.kind === 'honey') { this.ps[i].trials++; this.ps[i].omission++; this.ps[i].combo = 0; S.drops.push({ k: it.kind === 'honey' ? 'honey' : it.fk, x: it.x, y: it.y, r: it.r, t0: this.t }); }
         }
       }
       S.items = S.items.filter(it => !it.dead);
+      // 바구니로 날아가는 과일
+      for (const f of S.fly) if (this.t - f.t0 >= 0.6) { f.done = true; S.bag.push(f.k); S.bump = this.t; Sound.tick();
+        if (S.bag.length >= 10) { S.bag = []; S.baskets++; const b = 300 * (this.ps[i].fever > 0 ? 2 : 1); this.ps[i].score += b; if (this.coop) this.addTeam(b); const B = this.basketPos(i); FX.showBanner('바구니 가득!', '#FFB35C', `과일 10개 · 보너스 +${b}`, 1.5); FX.burst(B.x, B.y - 40, ['#E0393B', '#F38B23', '#E8C85A', '#fff'], 30); Sound.fanfare(); } }
+      S.fly = S.fly.filter(f => !f.done); S.drops = S.drops.filter(d => this.t - d.t0 < 0.9); S.gone = S.gone.filter(b => this.t - b.t0 < 0.9);
     });
   }
   draw(g, t) {
     this.activeIdx().forEach(i => {
-      for (const it of this.st[i].items) {
-        const age = this.t - it.born, s = Math.min(1, age / 0.2), fade = clamp((it.life - age) / 0.4, 0, 1);
+      const S = this.st[i], B = this.basketPos(i);
+      // 놓친 과일: 시무룩한 얼굴로 툭 떨어짐
+      for (const d of S.drops) { const u = (this.t - d.t0) / 0.9; g.globalAlpha = 1 - u; const y = d.y + 500 * u * u; if (d.k === 'honey') honeyPot(g, d.x, y, d.r * 0.9, t); else fruit(g, d.k, d.x, y, d.r * 0.9, t, 'sad'); }
+      // 떠나는 벌
+      for (const b of S.gone) { const u = (this.t - b.t0) / 0.9; g.globalAlpha = 1 - u; bee(g, b.x + b.dir * 600 * u * u, b.y - 260 * u, b.r * 0.8, t, { dir: b.dir, angry: b.angry, seed: b.seed }); }
+      g.globalAlpha = 1;
+      for (const it of S.items) {
+        const age = this.t - it.born, u = clamp(age / 0.4, 0, 1), pop = u < 1 ? (1 - Math.pow(1 - u, 3)) * (1 + Math.sin(u * Math.PI * 3) * 0.22 * (1 - u)) : 1;
+        const fade = it.swarm ? 1 : clamp((it.life - age) / 0.4, 0, 1);
         g.globalAlpha = fade;
-        if (it.kind === 'bee') bee(g, it.x, it.y, it.r * 0.8 * s, t);
-        else fruit(g, it.kind === 'gold' ? 'gold' : it.fk, it.x, it.y, it.r * s);
+        if (it.kind === 'bee') bee(g, it.x, it.y, it.r * 0.8 * pop, t, { dir: it.dir, angry: it.near, seed: it.seed });
+        else {
+          // 가지에 매달려 살랑살랑
+          const sway = Math.sin(t * 1.8 + it.seed) * 0.08, px = it.x, py = it.y - it.r * 1.5;
+          g.save(); g.translate(px, py); g.rotate(sway); g.translate(-px, -py);
+          g.strokeStyle = 'rgba(90,60,34,0.8)'; g.lineWidth = 3; g.beginPath(); g.moveTo(it.x, it.y - it.r * 0.9); g.lineTo(px, py - it.r * 0.2); g.stroke();
+          const mood = it.near ? 'wow' : age > it.life - 0.7 ? 'sad' : 'happy';
+          if (it.kind === 'honey') honeyPot(g, it.x, it.y, it.r * pop, t);
+          else fruit(g, it.kind === 'gold' ? 'gold' : it.fk, it.x, it.y, it.r * pop, t, mood, it.seed);
+          g.restore();
+        }
         if (it.dw > 0) { g.beginPath(); g.arc(it.x, it.y, it.r * 1.3, -Math.PI / 2, -Math.PI / 2 + it.dw / 0.12 * Math.PI * 2); g.lineWidth = 6; g.strokeStyle = COLORS.sun; g.stroke(); }
         g.globalAlpha = 1;
       }
+      // 바구니 + 날아가는 과일
+      const bump = clamp(1 - (this.t - S.bump) / 0.25, 0, 1), bw = B.w * (1 + bump * 0.08);
+      basket(g, B.x, B.y, bw, S.bag, t, bump);
+      for (const f of S.fly) { const u = clamp((this.t - f.t0) / 0.6, 0, 1), e = u * u * (3 - 2 * u), x = lerp(f.x0, B.x, e), y = lerp(f.y0, B.y - B.w * 0.3, e) - Math.sin(u * Math.PI) * 140; g.save(); g.translate(x, y); g.rotate(u * 6); g.translate(-x, -y); fruit(g, f.k, x, y, lerp(f.r, B.w * 0.12, e), t, 'yum'); g.restore(); }
+      // 바구니 글자: 몇 개 / 10 · 채운 바구니 수
+      plainText(g, `${S.bag.length} / 10`, B.x, B.y + B.w * 0.42, 18, PAL.ivory, 'center', 700);
+      if (S.baskets) plainText(g, `바구니 ${S.baskets}개 가득`, B.x, B.y + B.w * 0.42 + 24, 15, PAL.gold2, 'center', 600);
+      // 주문 쪽지
+      const O = S.order; if (O) {
+        const ox = B.x - 92, oy = B.y - B.w * 0.5 - 118, ow = 184, oh = 84;
+        lacquerPanel(g, ox, oy, ow, oh, 16, 0.9, PAL.gold);
+        plainText(g, '주문', ox + 16, oy + 22, 15, PAL.gold2, 'left', 700);
+        plainText(g, `${FRUITS[O.k].n} ${O.need}개`, ox + ow - 14, oy + 22, 17, PAL.ivory, 'right', 700);
+        for (let k = 0; k < O.need; k++) { const cx = ox + 36 + k * 52, cy = oy + 56, done = k < O.got; g.beginPath(); g.arc(cx, cy, 21, 0, 7); g.fillStyle = done ? 'rgba(108,199,159,0.28)' : 'rgba(244,236,221,0.08)'; g.fill(); g.lineWidth = 2; g.strokeStyle = done ? COLORS.leaf : 'rgba(244,236,221,0.3)'; g.setLineDash(done ? [] : [4, 4]); g.stroke(); g.setLineDash([]); g.globalAlpha = done ? 1 : 0.75; fruit(g, O.k, cx, cy + 2, 14, t, done ? 'yum' : 'happy', k); g.globalAlpha = 1; if (done) plainText(g, '✓', cx + 15, cy - 15, 16, COLORS.leaf, 'center', 800); }
+      }
     });
   }
-  drawGuide(g) { outlineText(g, '과일은 터치!  벌은 손을 내리고 참아요', View.W / 2, View.H - 100, Math.min(30, View.W * 0.022), COLORS.ink); }
+  drawGuide(g) {
+    const sw = this.ev && this.ev.kind === 'swarm', sh = this.ev && this.ev.kind === 'shower';
+    outlineText(g, sw ? '벌떼예요! 손을 내리고 꾹 참아요' : sh ? '과일 소나기! 보이는 대로 따요' : this.bossOn ? '황금 사과가 열렸어요! 벌은 여전히 참아요' : '과일은 터치!  벌은 손을 내리고 참아요', View.W / 2, View.H - 100, Math.min(30, View.W * 0.022), sw ? '#FFB3A6' : sh ? '#FFD9A0' : COLORS.ink);
+  }
 }
 
 const GAME_CLASS = { balloon: BalloonGame, dance: DanceGame, stars: StarsGame, ox: OxGame, orchard: OrchardGame };  // 새 게임은 games2.js 에서 덧붙임

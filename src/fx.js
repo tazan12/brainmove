@@ -195,31 +195,159 @@ function balloon(g, x, y, r, color, t, opts = {}) {
   if (opts.shape) shapeMark(g, opts.shape, 0, r * 0.05, r * 0.36, 'rgba(255,250,240,0.95)');
   g.restore();
 }
-function fruit(g, kind, x, y, r) {
-  if (kind === 'grape') {
-    for (const [dx, dy] of [[-0.35, -0.3], [0.35, -0.3], [0, -0.3], [-0.2, 0.1], [0.2, 0.1], [0, 0.45], [-0.45, 0.05], [0.45, 0.05]]) { const gr = g.createRadialGradient(x + dx * r - r * 0.1, y + dy * r - r * 0.1, 1, x + dx * r, y + dy * r, r * 0.34); gr.addColorStop(0, '#B892F0'); gr.addColorStop(1, '#5B2FA0'); g.fillStyle = gr; g.beginPath(); g.arc(x + dx * r, y + dy * r, r * 0.32, 0, 7); g.fill(); }
-    g.strokeStyle = '#3E7A2F'; g.lineWidth = 4; g.beginPath(); g.moveTo(x, y - r * 0.6); g.lineTo(x + r * 0.15, y - r * 0.95); g.stroke(); return;
+/* ---------- 과수원 캐릭터: 얼굴 있는 과일·장난꾸러기 벌 ---------- */
+const FRUITS = {
+  apple: { n: '사과', c: '#E0393B', leaf: '#3F9A55' }, pear: { n: '배', c: '#E8C85A', leaf: '#4C9A4A' }, peach: { n: '복숭아', c: '#F59A8C', leaf: '#4FA35C' },
+  orange: { n: '귤', c: '#F38B23', leaf: '#3F8F4A' }, persimmon: { n: '감', c: '#EE7A22', leaf: '#2F6F3A' }, grape: { n: '포도', c: '#7B47C4', leaf: '#3F8F4A' },
+  gold: { n: '황금 사과', c: '#EBC05A', leaf: '#3F9A55' }
+};
+// 얼굴: mood 'happy'(기본) · 'wow'(손이 다가오면) · 'sad'(떨어질 때) · 'yum'(딸 때)
+function fruitFace(g, x, y, r, t, mood = 'happy', seed = 0, light = false) {
+  const blink = ((t + seed * 1.7) % 3.4) < 0.13 && mood !== 'wow';
+  const ex = r * 0.27, ey = y - r * 0.02, ink = light ? '#FFFFFF' : '#2A1B22';
+  g.fillStyle = 'rgba(255,120,140,0.42)';
+  g.beginPath(); g.ellipse(x - r * 0.5, y + r * 0.2, r * 0.17, r * 0.1, 0, 0, 7); g.ellipse(x + r * 0.5, y + r * 0.2, r * 0.17, r * 0.1, 0, 0, 7); g.fill();
+  g.fillStyle = ink; g.strokeStyle = ink; g.lineCap = 'round'; g.lineWidth = Math.max(2, r * 0.07);
+  for (const sx of [-1, 1]) {
+    const cx = x + sx * ex;
+    if (blink || mood === 'yum') { g.beginPath(); g.arc(cx, ey + r * 0.03, r * 0.09, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+    else {
+      const big = mood === 'wow' ? 1.35 : 1; g.beginPath(); g.ellipse(cx, ey, r * 0.085 * big, r * 0.12 * big, 0, 0, 7); g.fill();
+      g.fillStyle = light ? '#2A0E4A' : '#fff'; g.beginPath(); g.arc(cx + (light ? r * 0.01 : -r * 0.025), ey + (light ? r * 0.02 : -r * 0.045), r * (light ? 0.05 : 0.035) * big, 0, 7); g.fill(); g.fillStyle = ink;
+    }
   }
-  const c = { apple: '#D93A3A', pear: '#E2C14A', orange: '#F08A24', gold: '#E9C063', peach: '#F2A08F', persimmon: '#E8722A' }[kind] || '#D93A3A';
-  const gr = g.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r * 1.05); gr.addColorStop(0, shade(c, 0.45)); gr.addColorStop(0.6, c); gr.addColorStop(1, shade(c, -0.3));
-  g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 12; g.shadowOffsetY = 5;
-  g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = gr; g.fill(); g.shadowBlur = 0; g.shadowOffsetY = 0;
-  if (kind === 'gold') { g.lineWidth = 3; g.strokeStyle = nacreStroke(g, x - r, y - r, x + r, y + r); g.stroke(); }
-  g.strokeStyle = '#5A3C22'; g.lineWidth = 4; g.beginPath(); g.moveTo(x, y - r * 0.85); g.lineTo(x + r * 0.08, y - r * 1.2); g.stroke();
-  g.fillStyle = '#3F8F5A'; g.beginPath(); g.ellipse(x + r * 0.33, y - r * 1.05, r * 0.32, r * 0.14, -0.5, 0, 7); g.fill();
+  g.beginPath();
+  if (mood === 'wow') { g.ellipse(x, y + r * 0.26, r * 0.08, r * 0.11, 0, 0, 7); g.fill(); }
+  else if (mood === 'sad') { g.arc(x, y + r * 0.36, r * 0.12, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); }
+  else { g.arc(x, y + r * 0.13, r * 0.14, Math.PI * 0.15, Math.PI * 0.85); g.stroke(); if (mood === 'yum') { g.fillStyle = '#E8607A'; g.beginPath(); g.ellipse(x, y + r * 0.3, r * 0.06, r * 0.05, 0, 0, 7); g.fill(); } }
 }
-function bee(g, x, y, r, t) {
-  const f = Math.sin(t * 40) * 0.4;
-  g.fillStyle = 'rgba(230,240,255,0.75)';
-  g.beginPath(); g.ellipse(x - r * 0.3, y - r * 0.75, r * 0.45, r * 0.3 + f * r * 0.15, -0.6, 0, 7); g.fill();
-  g.beginPath(); g.ellipse(x + r * 0.3, y - r * 0.75, r * 0.45, r * 0.3 - f * r * 0.15, 0.6, 0, 7); g.fill();
-  g.beginPath(); g.ellipse(x, y, r * 1.05, r * 0.75, 0, 0, 7); g.fillStyle = '#E7B53C'; g.fill();
-  g.save(); g.beginPath(); g.ellipse(x, y, r * 1.05, r * 0.75, 0, 0, 7); g.clip(); g.fillStyle = '#1B1A2A';
-  for (const dx of [-0.35, 0.15, 0.65]) g.fillRect(x + dx * r - r * 0.12, y - r, r * 0.24, r * 2); g.restore();
-  g.fillStyle = '#1B1A2A'; g.beginPath(); g.arc(x - r * 0.7, y - r * 0.12, r * 0.12, 0, 7); g.fill();
-  g.beginPath(); g.moveTo(x + r * 1.0, y); g.lineTo(x + r * 1.35, y + r * 0.08); g.lineTo(x + r * 1.0, y + r * 0.18); g.fill();
-  // 경고 표시: 붉은 테
-  g.lineWidth = 3; g.strokeStyle = 'rgba(212,74,58,0.85)'; g.beginPath(); g.arc(x, y, r * 1.55, 0, 7); g.stroke();
+function fruitLeaf(g, x, y, r, rot, col) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = col;
+  g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(r * 0.28, -r * 0.2, r * 0.6, 0); g.quadraticCurveTo(r * 0.28, r * 0.2, 0, 0); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(r * 0.05, 0); g.lineTo(r * 0.5, 0); g.stroke(); g.restore();
+}
+// 과일 몸통 + 얼굴. 그림자·하이라이트로 동글동글하게
+function fruit(g, kind, x, y, r, t = 0, mood = 'happy', seed = 0) {
+  const F = FRUITS[kind] || FRUITS.apple, c = F.c;
+  g.save();
+  if (kind === 'grape') {
+    const pts = [[-0.42, -0.42], [0, -0.48], [0.42, -0.42], [-0.62, -0.02], [-0.21, -0.06], [0.21, -0.06], [0.62, -0.02], [-0.4, 0.36], [0, 0.32], [0.4, 0.36], [-0.2, 0.7], [0.2, 0.7], [0, 1.0]];
+    g.strokeStyle = '#5A3C22'; g.lineWidth = Math.max(3, r * 0.08); g.beginPath(); g.moveTo(x, y - r * 0.75); g.quadraticCurveTo(x + r * 0.1, y - r * 1.05, x + r * 0.05, y - r * 1.25); g.stroke();
+    fruitLeaf(g, x + r * 0.05, y - r * 0.95, r * 1.2, -0.4, F.leaf);
+    for (const [dx, dy] of pts) { const gx = x + dx * r, gy = y + dy * r * 0.9, gr = g.createRadialGradient(gx - r * 0.1, gy - r * 0.1, 1, gx, gy, r * 0.3); gr.addColorStop(0, '#C9A7F5'); gr.addColorStop(0.55, '#8656CF'); gr.addColorStop(1, '#4F2A92'); g.fillStyle = gr; g.beginPath(); g.arc(gx, gy, r * 0.27, 0, 7); g.fill(); }
+    fruitFace(g, x, y - r * 0.02, r * 0.95, t, mood, seed, true); g.restore(); return;
+  }
+  // 그림자
+  g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = r * 0.3; g.shadowOffsetY = r * 0.12;
+  const gr = g.createRadialGradient(x - r * 0.38, y - r * 0.4, r * 0.08, x, y, r * 1.1);
+  gr.addColorStop(0, shade(c, 0.55)); gr.addColorStop(0.55, c); gr.addColorStop(1, shade(c, -0.32)); g.fillStyle = gr;
+  g.beginPath();
+  if (kind === 'apple' || kind === 'gold') { // 위가 살짝 들어간 사과 모양
+    g.moveTo(x, y - r * 0.72);
+    g.bezierCurveTo(x + r * 0.5, y - r * 1.12, x + r * 1.18, y - r * 0.6, x + r * 0.98, y + r * 0.22);
+    g.bezierCurveTo(x + r * 0.82, y + r * 0.92, x + r * 0.3, y + r * 1.05, x, y + r * 0.9);
+    g.bezierCurveTo(x - r * 0.3, y + r * 1.05, x - r * 0.82, y + r * 0.92, x - r * 0.98, y + r * 0.22);
+    g.bezierCurveTo(x - r * 1.18, y - r * 0.6, x - r * 0.5, y - r * 1.12, x, y - r * 0.72);
+  } else if (kind === 'pear') { // 위가 좁은 배 모양
+    g.moveTo(x, y - r * 1.0);
+    g.bezierCurveTo(x + r * 0.42, y - r * 1.0, x + r * 0.5, y - r * 0.45, x + r * 0.62, y - r * 0.1);
+    g.bezierCurveTo(x + r * 1.1, y + r * 0.35, x + r * 0.85, y + r * 1.02, x, y + r * 1.0);
+    g.bezierCurveTo(x - r * 0.85, y + r * 1.02, x - r * 1.1, y + r * 0.35, x - r * 0.62, y - r * 0.1);
+    g.bezierCurveTo(x - r * 0.5, y - r * 0.45, x - r * 0.42, y - r * 1.0, x, y - r * 1.0);
+  } else if (kind === 'peach') { // 끝이 살짝 뾰족한 복숭아
+    g.moveTo(x, y - r * 0.82);
+    g.bezierCurveTo(x + r * 0.7, y - r * 1.1, x + r * 1.08, y - r * 0.2, x + r * 0.9, y + r * 0.35);
+    g.bezierCurveTo(x + r * 0.7, y + r * 0.95, x + r * 0.2, y + r * 1.02, x, y + r * 0.98);
+    g.bezierCurveTo(x - r * 0.2, y + r * 1.02, x - r * 0.7, y + r * 0.95, x - r * 0.9, y + r * 0.35);
+    g.bezierCurveTo(x - r * 1.08, y - r * 0.2, x - r * 0.7, y - r * 1.1, x, y - r * 0.82);
+  } else if (kind === 'persimmon') g.ellipse(x, y + r * 0.04, r * 1.02, r * 0.86, 0, 0, 7); // 납작한 감
+  else g.arc(x, y, r, 0, 7);
+  g.fill(); g.shadowBlur = 0; g.shadowOffsetY = 0;
+  // 표면 무늬
+  if (kind === 'orange') { g.fillStyle = 'rgba(160,70,0,0.18)'; for (let k = 0; k < 14; k++) { const a = k * 2.4, d = r * (0.3 + (k % 4) * 0.15); g.beginPath(); g.arc(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.9, r * 0.03, 0, 7); g.fill(); } }
+  if (kind === 'peach') { g.strokeStyle = 'rgba(190,80,80,0.35)'; g.lineWidth = Math.max(2, r * 0.05); g.beginPath(); g.moveTo(x + r * 0.02, y - r * 0.76); g.quadraticCurveTo(x + r * 0.3, y - r * 0.45, x + r * 0.42, y - r * 0.05); g.stroke(); g.fillStyle = 'rgba(255,90,110,0.25)'; g.beginPath(); g.ellipse(x + r * 0.35, y - r * 0.2, r * 0.45, r * 0.5, 0.4, 0, 7); g.fill(); }
+  if (kind === 'pear') { g.fillStyle = 'rgba(120,90,20,0.22)'; for (let k = 0; k < 9; k++) { const a = k * 2.1; g.beginPath(); g.arc(x + Math.cos(a) * r * 0.55, y + r * 0.3 + Math.sin(a) * r * 0.45, r * 0.025, 0, 7); g.fill(); } }
+  // 하이라이트
+  g.globalAlpha = 0.6; g.fillStyle = '#fff'; g.beginPath(); g.ellipse(x - r * 0.42, y - r * 0.38, r * 0.13, r * 0.24, -0.6, 0, 7); g.fill(); g.globalAlpha = 1;
+  // 꼭지·잎
+  if (kind === 'persimmon' || kind === 'orange') {
+    g.fillStyle = shade(F.leaf, -0.1); const top = y - r * (kind === 'persimmon' ? 0.8 : 0.95);
+    for (let k = 0; k < 4; k++) { g.save(); g.translate(x, top); g.rotate(k * Math.PI / 2 + Math.PI / 4); g.beginPath(); g.ellipse(0, -r * 0.16, r * 0.11, r * 0.2, 0, 0, 7); g.fill(); g.restore(); }
+    g.fillStyle = '#4A3320'; g.fillRect(x - r * 0.04, top - r * 0.18, r * 0.08, r * 0.16);
+  } else {
+    const top = y - r * (kind === 'pear' ? 0.98 : 0.74);
+    g.strokeStyle = '#5A3C22'; g.lineWidth = Math.max(3, r * 0.09); g.lineCap = 'round'; g.beginPath(); g.moveTo(x, top + r * 0.06); g.quadraticCurveTo(x + r * 0.04, top - r * 0.2, x + r * 0.14, top - r * 0.36); g.stroke();
+    fruitLeaf(g, x + r * 0.1, top - r * 0.22, r, -0.35, F.leaf);
+  }
+  if (kind === 'gold') { // 황금 사과: 반짝이 왕관 + 자개 테두리
+    g.lineWidth = 3; g.strokeStyle = nacreStroke(g, x - r, y - r, x + r, y + r); g.beginPath(); g.arc(x, y + r * 0.08, r * 1.12, 0, 7); g.stroke();
+    for (let k = 0; k < 4; k++) { const a = t * 1.6 + k * Math.PI / 2; star4(g, x + Math.cos(a) * r * 1.35, y + Math.sin(a) * r * 1.35, r * (0.13 + 0.05 * Math.sin(t * 6 + k)), '#FFF3C8'); }
+  }
+  fruitFace(g, x, y + (kind === 'pear' ? r * 0.22 : r * 0.08), r, t, mood, seed);
+  g.restore();
+}
+// 벌: 동글동글 털복숭이 몸, 큰 눈, 더듬이. 경고 표시(붉은 점선 테 + '!')는 그대로 둬서 한눈에 구분
+function bee(g, x, y, r, t, opts = {}) {
+  const dir = opts.dir || 1, angry = !!opts.angry, f = Math.sin(t * 46);
+  g.save();
+  // 경고 테
+  g.setLineDash([r * 0.32, r * 0.22]); g.lineDashOffset = -t * 30; g.lineWidth = 3; g.strokeStyle = 'rgba(226,96,79,0.9)'; g.beginPath(); g.arc(x, y, r * 1.6, 0, 7); g.stroke(); g.setLineDash([]);
+  g.fillStyle = '#E2604F'; g.beginPath(); g.arc(x + r * 1.15, y - r * 1.15, r * 0.3, 0, 7); g.fill(); plainText(g, '!', x + r * 1.15, y - r * 1.13, r * 0.42, '#fff', 'center', 800);
+  g.translate(x, y + Math.sin(t * 7 + (opts.seed || 0)) * r * 0.08); g.scale(dir, 1); g.rotate(Math.sin(t * 5) * 0.06);
+  // 날개(뒤)
+  g.fillStyle = 'rgba(225,240,255,0.7)'; g.strokeStyle = 'rgba(160,190,230,0.9)'; g.lineWidth = 1.5;
+  g.beginPath(); g.ellipse(-r * 0.15, -r * 0.82, r * 0.42, r * (0.26 + f * 0.1), -0.5 + f * 0.25, 0, 7); g.fill(); g.stroke();
+  // 침
+  g.fillStyle = '#2A2233'; g.beginPath(); g.moveTo(-r * 0.98, r * 0.02); g.lineTo(-r * 1.32, r * 0.12); g.lineTo(-r * 0.96, r * 0.26); g.fill();
+  // 몸
+  const gr = g.createRadialGradient(r * 0.1, -r * 0.3, r * 0.1, 0, 0, r * 1.1); gr.addColorStop(0, '#FFE58A'); gr.addColorStop(0.7, '#F2B829'); gr.addColorStop(1, '#C98A12');
+  g.fillStyle = gr; g.beginPath(); g.ellipse(0, 0, r * 1.02, r * 0.82, 0, 0, 7); g.fill();
+  g.save(); g.beginPath(); g.ellipse(0, 0, r * 1.02, r * 0.82, 0, 0, 7); g.clip(); g.fillStyle = '#2A2233';
+  for (const dx of [-0.55, -0.12]) { g.beginPath(); g.ellipse(dx * r, 0, r * 0.13, r * 0.9, 0.12, 0, 7); g.fill(); } g.restore();
+  // 날개(앞)
+  g.fillStyle = 'rgba(235,246,255,0.8)'; g.beginPath(); g.ellipse(r * 0.18, -r * 0.86, r * 0.46, r * (0.28 - f * 0.1), 0.45 - f * 0.25, 0, 7); g.fill(); g.stroke();
+  // 더듬이
+  g.strokeStyle = '#2A2233'; g.lineWidth = Math.max(2, r * 0.06); g.lineCap = 'round';
+  for (const [ax, ay] of [[0.55, -0.62], [0.8, -0.5]]) { g.beginPath(); g.moveTo(r * ax, r * ay); g.quadraticCurveTo(r * (ax + 0.1), r * (ay - 0.35), r * (ax + 0.28), r * (ay - 0.42)); g.stroke(); g.fillStyle = '#2A2233'; g.beginPath(); g.arc(r * (ax + 0.28), r * (ay - 0.42), r * 0.08, 0, 7); g.fill(); }
+  // 눈(큰 흰자 + 눈동자) · 볼 · 입
+  for (const ex of [0.38, 0.72]) {
+    g.fillStyle = '#fff'; g.beginPath(); g.ellipse(r * ex, -r * 0.18, r * 0.17, r * 0.2, 0, 0, 7); g.fill();
+    g.fillStyle = '#1C1626'; g.beginPath(); g.arc(r * (ex + 0.05), -r * 0.15, r * 0.09, 0, 7); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(r * (ex + 0.03), -r * 0.19, r * 0.03, 0, 7); g.fill();
+    if (angry) { g.strokeStyle = '#1C1626'; g.lineWidth = Math.max(2, r * 0.06); g.beginPath(); g.moveTo(r * (ex - 0.14), -r * 0.44); g.lineTo(r * (ex + 0.14), -r * 0.36 + (ex > 0.5 ? -r * 0.08 : r * 0.04)); g.stroke(); }
+  }
+  g.fillStyle = 'rgba(255,110,90,0.5)'; g.beginPath(); g.ellipse(r * 0.82, r * 0.18, r * 0.11, r * 0.07, 0, 0, 7); g.fill();
+  g.strokeStyle = '#1C1626'; g.lineWidth = Math.max(2, r * 0.05); g.beginPath();
+  if (angry) g.arc(r * 0.6, r * 0.32, r * 0.1, Math.PI * 1.15, Math.PI * 1.85); else g.arc(r * 0.6, r * 0.12, r * 0.12, Math.PI * 0.2, Math.PI * 0.8);
+  g.stroke();
+  g.restore();
+}
+// 꿀단지(벌을 잘 참으면 나오는 선물)
+function honeyPot(g, x, y, r, t) {
+  g.save(); g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = r * 0.3; g.shadowOffsetY = r * 0.1;
+  const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.2, r * 0.1, x, y + r * 0.1, r * 1.1); gr.addColorStop(0, '#E9B36A'); gr.addColorStop(1, '#8A4E1C');
+  g.fillStyle = gr; g.beginPath(); g.ellipse(x, y + r * 0.15, r * 0.95, r * 0.85, 0, 0, 7); g.fill(); g.shadowBlur = 0; g.shadowOffsetY = 0;
+  g.fillStyle = '#6B3A14'; roundRect(g, x - r * 0.62, y - r * 0.82, r * 1.24, r * 0.32, r * 0.12); g.fill();
+  g.fillStyle = '#FFC93A'; g.beginPath(); g.moveTo(x - r * 0.62, y - r * 0.55); g.quadraticCurveTo(x - r * 0.3, y - r * 0.2 + Math.sin(t * 3) * r * 0.05, x - r * 0.15, y - r * 0.5); g.quadraticCurveTo(x + r * 0.2, y - r * 0.15, x + r * 0.62, y - r * 0.55); g.closePath(); g.fill();
+  g.fillStyle = '#F4ECDD'; roundRect(g, x - r * 0.5, y - r * 0.05, r, r * 0.42, r * 0.08); g.fill();
+  plainText(g, '꿀', x, y + r * 0.17, r * 0.34, '#6B3A14', 'center', 800, SERIF);
+  for (let k = 0; k < 3; k++) { const a = t * 2 + k * 2.1; star4(g, x + Math.cos(a) * r * 1.25, y + Math.sin(a) * r * 1.15, r * 0.12, '#FFE58A'); }
+  g.restore();
+}
+// 바구니(딴 과일이 쌓임)
+function basket(g, x, y, w, items, t, glow = 0) {
+  g.save(); const h = w * 0.5;
+  // 쌓인 과일
+  // 과일이 바구니 위로 소복이 쌓여 보이게(아래 줄 4개 → 3개 → 2개)
+  items.slice(-9).forEach((k, n) => { const row = n < 4 ? 0 : n < 7 ? 1 : 2, col = row === 0 ? n : row === 1 ? n - 4 : n - 7, cnt = [4, 3, 2][row]; const fx = x + (col - (cnt - 1) / 2) * w * 0.22, fy = y - h * 0.5 - row * w * 0.17; fruit(g, k, fx, fy, w * 0.12, t, 'happy', n); });
+  if (glow > 0) { g.shadowColor = '#FFE58A'; g.shadowBlur = 30 * glow; }
+  const gr = g.createLinearGradient(0, y - h * 0.4, 0, y + h * 0.6); gr.addColorStop(0, '#C98B48'); gr.addColorStop(1, '#7A4A1E'); g.fillStyle = gr;
+  g.beginPath(); g.moveTo(x - w / 2, y - h * 0.35); g.lineTo(x + w / 2, y - h * 0.35); g.lineTo(x + w * 0.38, y + h * 0.55); g.lineTo(x - w * 0.38, y + h * 0.55); g.closePath(); g.fill(); g.shadowBlur = 0;
+  g.strokeStyle = 'rgba(70,40,15,0.55)'; g.lineWidth = 2;
+  for (let k = 1; k < 4; k++) { const yy = y - h * 0.35 + k * h * 0.22, ww = w / 2 - k * w * 0.03; g.beginPath(); g.moveTo(x - ww, yy); g.lineTo(x + ww, yy); g.stroke(); }
+  for (let k = -3; k <= 3; k++) { g.beginPath(); g.moveTo(x + k * w * 0.13, y - h * 0.35); g.lineTo(x + k * w * 0.1, y + h * 0.55); g.stroke(); }
+  g.fillStyle = '#B07434'; roundRect(g, x - w / 2 - 4, y - h * 0.42, w + 8, h * 0.14, h * 0.07); g.fill();
+  g.restore();
 }
 // 몸 위 빛 뼈대(청·주황), 관절은 금빛
 function drawAura(g, P, color, glow = 0, gold = false) {

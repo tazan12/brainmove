@@ -433,9 +433,10 @@ const App = {
     FX.draw(g);
     Pose.players.forEach(P => drawHands(g, P, P.color, t));
     if (st && st.drawHud) st.drawHud(g);
-    if (st && st.drawGuide && !Narr.showing) st.drawGuide(g);
+    const capOn = Narr.showing;   // 자막과 아래 안내 줄이 같은 순간에 겹쳐 그려지지 않게 한 번만 판단
+    if (st && st.drawGuide && !capOn) st.drawGuide(g);
     HandButtons.draw(g);
-    Narr.draw(g);
+    if (capOn) Narr.draw(g);
     drawCorners(g, W, H);
     // 경고
     if (Pose.players.length === 2 && st && st.kind !== 'calib') {
